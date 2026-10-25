@@ -682,11 +682,11 @@ extern "C" void OnModLoad() {
     SET_TO(pTimeInMilliseconds,      aml->GetSym(hGTASA, "_ZN6CTimer22m_snTimeInMillisecondsE"));
     SET_TO(pOnAMissionFlag,          aml->GetSym(hGTASA, "OnAMissionFlag"));
 
-    void* pRsGlobal = aml->GetSym(hGTASA, "RsGlobal");
+        uintptr_t pRsGlobal = aml->GetSym(hGTASA, "RsGlobal");
     if (pRsGlobal) {
         // In 64-bit RsGlobalType, maximumWidth is at +0x08 and maximumHeight is at +0x0C
-        pRsGlobalWidth  = (int32_t*)((uintptr_t)pRsGlobal + 0x08);
-        pRsGlobalHeight = (int32_t*)((uintptr_t)pRsGlobal + 0x0C);
+        pRsGlobalWidth  = (int32_t*)(pRsGlobal + 0x08);
+        pRsGlobalHeight = (int32_t*)(pRsGlobal + 0x0C);
     }
 
     HOOKSYM(CHud_DrawAfterFade,                hGTASA, "_ZN4CHud13DrawAfterFadeEv");
