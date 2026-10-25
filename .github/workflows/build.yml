@@ -15,13 +15,15 @@ jobs:
 
       - name: Fetch Official AML SDK Headers
         run: |
-          git clone --depth=1 "https://github.com/AndroidModLoader/GTASA_ModTemplate.git" /tmp/aml_template
-          if [ -d "/tmp/aml_template/mod" ]; then
+          git clone --depth=1 "https://github.com/RusJJ/AndroidModLoader.git" /tmp/aml_template
+          if [ -d "/tmp/aml_template/template_of_mod/mod" ]; then
+            cp -r /tmp/aml_template/template_of_mod/mod ./jni/
+          elif [ -d "/tmp/aml_template/template_of_mod/jni/mod" ]; then
+            cp -r /tmp/aml_template/template_of_mod/jni/mod ./jni/
+          elif [ -d "/tmp/aml_template/mod" ]; then
             cp -r /tmp/aml_template/mod ./jni/
-          elif [ -d "/tmp/aml_template/jni/mod" ]; then
-            cp -r /tmp/aml_template/jni/mod ./jni/
-          elif [ -d "/tmp/aml_template/include/mod" ]; then
-            cp -r /tmp/aml_template/include/mod ./jni/
+          else
+            echo "Error: Mod headers folder not found in repository!" && exit 1
           fi
 
       - name: Setup Android NDK
