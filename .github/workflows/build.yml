@@ -3,7 +3,7 @@ name: Build AML 64-bit Plugin
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Allows you to trigger the build manually with a button click
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
 
       - name: Fetch Official AML SDK Headers
         run: |
-          git clone --depth=1 https://github.com/AndroidModLoader/GTASA_ModTemplate.git /tmp/aml_template
+          git clone --depth=1 "https://github.com/AndroidModLoader/GTASA_ModTemplate.git" /tmp/aml_template
           if [ -d "/tmp/aml_template/mod" ]; then
             cp -r /tmp/aml_template/mod ./jni/
           elif [ -d "/tmp/aml_template/jni/mod" ]; then
