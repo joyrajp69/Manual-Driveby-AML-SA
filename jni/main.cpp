@@ -6,17 +6,28 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
-#include <cctype>
 #include <unordered_map>
-#include <string>
 
-MYMOD(net.PS2Revival.ManualDriveby, GTA:SA Manual Driveby Refixed, 1.1, devil_desi)
+MYMODCFG(net.PS2Revival.ManualDriveby, GTA:SA Manual Driveby Refixed, 1.3, devil_desi)
 
 // ============================================================================
 // 1. ENGINE TYPES & 64-BIT STRUCTURES
 // ============================================================================
 struct CVector {
     float x, y, z;
+};
+
+struct CRect {
+    float left, bottom, right, top;
+};
+
+struct CRGBA {
+    uint8_t r, g, b, a;
+    CRGBA(uint8_t _r, uint8_t _g, uint8_t _b, uint8_t _a) : r(_r), g(_g), b(_b), a(_a) {}
+};
+
+struct CSprite2d {
+    void* m_pTexture = nullptr;
 };
 
 enum eWeaponType : uint32_t {
@@ -83,75 +94,70 @@ class CPad;
 class CAnimBlendAssociation;
 
 // ============================================================================
-// 2. CONFIGURATION STRUCTURE (PARSED FROM DrivebySettings.ini)
+// 2. CONFIGURATION STRUCTURE
 // ============================================================================
 struct SkillRates {
-    float poor = -2.0f;
-    float gangster = -2.0f;
-    float hitman = -2.0f;
+    float poor = 1.0f;
+    float gangster = 1.0f;
+    float hitman = 1.0f;
 };
 
 struct DrivebySettings {
     // [MAIN]
-    int drivebyControlType = 1;
+    bool enableMod = true;
     bool preLoadIFP = true;
     bool disableBikeWeakPoint = true;
     int noDrivingWhileAiming = 0;
-    bool prepareThrowAnim = true;
     bool closeWindowsAgain = true;
     int windshieldMode = 1;
-    int fixPedReactions = 2;
-    bool recruitBlip = true;
     float crosshairExpMult = 0.75f;
 
+    // [TOUCH_ICON] - Cheeseburger's Driveby Icon Settings
+    bool showTouchIcon = true;
+    char iconTextureName[64] = "hud_driveby";
+    float iconPosXRatio = 0.82f;   // 82% across screen width (Right side, near Horn/Sub-mission)
+    float iconPosYRatio = 0.45f;   // 45% down screen height
+    float iconSizePx = 135.0f;     // Button diameter in pixels on 1080p screen
+
     // [WEAPONSWITCH]
-    int dpadButtonsMode = 1;
+    bool allowTouchWeaponSwipe = true;
     int sideLookButtons = 1;
-    bool enableOnStory = true;
 
     // [WEAPONSETTINGS]
     bool fixShootRateOfNPC = true;
     SkillRates defaultRates = { 1.0f, 1.0f, 1.0f };
-    SkillRates weaponRates[256];
+    SkillRates weaponRates[60];
 
     // [CAMERA]
-    float distCar[3]    = { 5.0f, 10.0f, 17.0f };
-    float distBike[3]   = { 2.8f, 4.4f, 17.3f };
-    float heightCar[3]  = { 0.5f, 0.55f, 0.60f };
-    float heightBike[3] = { 0.2f, 0.2f, 0.2f };
-    float tweakFOV[3]   = { 55.0f, 60.0f, 65.0f };
-    int restoreDistance = 0;
     int jumpcutRestore = 1;
-    float jumpcutCarSpeed = 8.0f;
-    int keepAiming = 0;
     bool freeLineOfSight = true;
-    bool noAngleLimit = true;
 
     // [EXCEPTIONS]
     bool disableOnMission = false;
-    uint8_t classMaskCars   = 0b1110; // Bit 1: InstantHit, Bit 2: Projectile, Bit 3: AreaEffect
+    uint8_t classMaskCars   = 0b1110;
     uint8_t classMaskBikes  = 0b1110;
     uint8_t classMaskBoats  = 0b1110;
     uint8_t classMaskHelis  = 0b1110;
     uint8_t classMaskPlanes = 0b1110;
     uint8_t classMaskTrains = 0b1110;
-    std::unordered_map<int, uint8_t> modelExceptions;
 
-    // [CARSWITHOUTWINDOWS]
     std::unordered_map<int, int> carsWithoutWindows;
 } gSettings;
 
 // Runtime State
 static bool g_bInManualDriveby = false;
-static bool g_bPrevToggleCombo = false;
+static bool g_bPrevComboPressed = false;
+static bool g_bTouchToggleRequested = false;
 static bool g_bIfpPreloaded = false;
+static bool g_bSpriteLoaded = false;
+static CSprite2d g_DrivebyIconSprite;
 static uint32_t g_nLastSwitchTick = 0;
 static CVehicle* g_pCurrentVeh = nullptr;
 static CVehicle* g_pLastActiveVeh = nullptr;
 static float g_fCachedPlayerShootRate = 1.0f;
 
 // ============================================================================
-// 3. ENGINE FUNCTION POINTERS (64-BIT AML 2.10 SYMBOLS)
+// 3. ENGINE FUNCTION POINTERS
 // ============================================================================
 void* hGTASA = nullptr;
 uintptr_t pGTASA = 0;
@@ -169,6 +175,16 @@ void        (*ReportFrontendAudioEvent)(void* pAudioEngine, int eventId, float v
 int32_t     (*GetAnimationBlockIndex)(const char* name) = nullptr;
 void        (*RequestModel)(int32_t modelId, int32_t flags) = nullptr;
 void        (*RestoreCameraJumpCut)(void* pCamera) = nullptr;
+bool        (*PadCycleWeaponRight)(CPad* pPad) = nullptr;
+bool        (*PadCycleWeaponLeft)(CPad* pPad) = nullptr;
+
+// Texture & Sprite2d Functions (For rendering Cheeseburger's icon from mobile.txt)
+int32_t     (*TxdFindSlot)(const char* name) = nullptr;
+void        (*TxdPushCurrent)(void) = nullptr;
+void        (*TxdPopCurrent)(void) = nullptr;
+void        (*TxdSetCurrent)(int32_t slot) = nullptr;
+void        (*SpriteSetTexture)(CSprite2d* self, const char* name) = nullptr;
+void        (*SpriteDraw)(CSprite2d* self, const CRect& rect, const CRGBA& color) = nullptr;
 
 void*       (*OperatorNew)(size_t size) = nullptr;
 void        (*TaskDriveByCtor)(CTaskSimpleGangDriveBy* self, CEntity* targetEntity, const CVector* targetPos,
@@ -177,38 +193,88 @@ void        (*SetTaskSecondary)(void* pTaskMgr, CTask* pTask, int slot) = nullpt
 CTask*      (*GetTaskSecondary)(void* pTaskMgr, int slot) = nullptr;
 CAnimBlendAssociation* (*RpAnimBlendClumpGetAssociation)(void* pClump, const char* animName) = nullptr;
 
-// Globals
 void*     pTheCamera = nullptr;
 void*     pAudioEngine = nullptr;
 uint32_t* pTimeInMilliseconds = nullptr;
 uint32_t* pOnAMissionFlag = nullptr;
+int32_t*  pRsGlobalWidth = nullptr;
+int32_t*  pRsGlobalHeight = nullptr;
 
 // ============================================================================
-// 4. CUSTOM PARSER FOR ORIGINAL DrivebySettings.ini
+// 4. AUTO-GENERATING INI LOADER
 // ============================================================================
-static std::string TrimStr(const std::string& s) {
-    size_t start = 0;
-    while (start < s.size() && std::isspace((unsigned char)s[start])) start++;
-    size_t end = s.size();
-    while (end > start && std::isspace((unsigned char)s[end - 1])) end--;
-    return s.substr(start, end - start);
-}
-
-static uint8_t ParseExceptionMask(const char* val) {
-    int b1 = 0, b2 = 0, b3 = 0;
-    if (std::sscanf(val, "%d / %d / %d", &b1, &b2, &b3) == 3 ||
-        std::sscanf(val, "%d/%d/%d", &b1, &b2, &b3) == 3) {
-        uint8_t mask = 0;
-        if (b1 > 0) mask |= (1 << 1);
-        if (b2 > 0) mask |= (1 << 2);
-        if (b3 > 0) mask |= (1 << 3);
-        return mask;
+static uint8_t ParseMask(const char* str) {
+    int b1 = 1, b2 = 1, b3 = 1;
+    if (std::sscanf(str, "%d/%d/%d", &b1, &b2, &b3) == 3 ||
+        std::sscanf(str, "%d / %d / %d", &b1, &b2, &b3) == 3) {
+        uint8_t m = 0;
+        if (b1 > 0) m |= (1 << 1);
+        if (b2 > 0) m |= (1 << 2);
+        if (b3 > 0) m |= (1 << 3);
+        return m;
     }
     return 0b1110;
 }
 
-void LoadDrivebySettingsINI() {
-    // Default hardcoded windowless vehicles from original INI
+static void ParseSkillTriplet(const char* str, SkillRates& out) {
+    std::sscanf(str, "%f / %f / %f", &out.poor, &out.gangster, &out.hitman);
+}
+
+void InitAndSaveConfig() {
+    // [MAIN]
+    gSettings.enableMod            = cfg->GetBool("EnableMod", true, "MAIN");
+    gSettings.preLoadIFP           = cfg->GetBool("PreLoadIFP", true, "MAIN");
+    gSettings.disableBikeWeakPoint = cfg->GetBool("DisableBikeWeakPoint", true, "MAIN");
+    gSettings.noDrivingWhileAiming = cfg->GetInt("NoDrivingWhileAiming", 0, "MAIN");
+    gSettings.closeWindowsAgain    = cfg->GetBool("CloseWindowsAgain", true, "MAIN");
+    gSettings.windshieldMode       = cfg->GetInt("WindshieldMode", 1, "MAIN");
+    gSettings.crosshairExpMult     = cfg->GetFloat("CrosshairExpMult", 0.75f, "MAIN");
+
+    // [TOUCH_ICON]
+    gSettings.showTouchIcon  = cfg->GetBool("ShowTouchIcon", true, "TOUCH_ICON");
+    const char* texName      = cfg->GetString("IconTextureName", "hud_driveby", "TOUCH_ICON");
+    std::snprintf(gSettings.iconTextureName, sizeof(gSettings.iconTextureName), "%s", texName);
+    gSettings.iconPosXRatio  = cfg->GetFloat("IconPosXRatio", 0.82f, "TOUCH_ICON");
+    gSettings.iconPosYRatio  = cfg->GetFloat("IconPosYRatio", 0.45f, "TOUCH_ICON");
+    gSettings.iconSizePx     = cfg->GetFloat("IconSizePx", 135.0f, "TOUCH_ICON");
+
+    // [WEAPONSWITCH]
+    gSettings.allowTouchWeaponSwipe = cfg->GetBool("AllowTouchWeaponSwipe", true, "WEAPONSWITCH");
+    gSettings.sideLookButtons       = cfg->GetInt("SideLookButtons", 1, "WEAPONSWITCH");
+
+    // [WEAPONSETTINGS]
+    gSettings.fixShootRateOfNPC = cfg->GetBool("FixShootRateOfNPC", true, "WEAPONSETTINGS");
+    ParseSkillTriplet(cfg->GetString("Default", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.defaultRates);
+
+    for (int i = 0; i < 60; ++i) gSettings.weaponRates[i] = gSettings.defaultRates;
+    ParseSkillTriplet(cfg->GetString("22", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[22]);
+    ParseSkillTriplet(cfg->GetString("23", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[23]);
+    ParseSkillTriplet(cfg->GetString("24", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[24]);
+    ParseSkillTriplet(cfg->GetString("25", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[25]);
+    ParseSkillTriplet(cfg->GetString("26", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[26]);
+    ParseSkillTriplet(cfg->GetString("27", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[27]);
+    ParseSkillTriplet(cfg->GetString("28", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[28]);
+    ParseSkillTriplet(cfg->GetString("29", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[29]);
+    ParseSkillTriplet(cfg->GetString("30", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[30]);
+    ParseSkillTriplet(cfg->GetString("31", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[31]);
+    ParseSkillTriplet(cfg->GetString("32", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[32]);
+    ParseSkillTriplet(cfg->GetString("33", "1.00 / 1.00 / 1.00", "WEAPONSETTINGS"), gSettings.weaponRates[33]);
+
+    // [CAMERA]
+    gSettings.jumpcutRestore  = cfg->GetInt("JumpcutRestore", 1, "CAMERA");
+    gSettings.freeLineOfSight = cfg->GetBool("FreeLineOfSight", true, "CAMERA");
+
+    // [EXCEPTIONS]
+    gSettings.disableOnMission = cfg->GetBool("DisableOnMission", false, "EXCEPTIONS");
+    gSettings.classMaskCars    = ParseMask(cfg->GetString("Cars",   "1/1/1", "EXCEPTIONS"));
+    gSettings.classMaskBikes   = ParseMask(cfg->GetString("Bikes",  "1/1/1", "EXCEPTIONS"));
+    gSettings.classMaskBoats   = ParseMask(cfg->GetString("Boats",  "1/1/1", "EXCEPTIONS"));
+    gSettings.classMaskHelis   = ParseMask(cfg->GetString("Helis",  "1/1/1", "EXCEPTIONS"));
+    gSettings.classMaskPlanes  = ParseMask(cfg->GetString("Planes", "1/1/1", "EXCEPTIONS"));
+    gSettings.classMaskTrains  = ParseMask(cfg->GetString("Trains", "1/1/1", "EXCEPTIONS"));
+
+    cfg->Save();
+
     int defaultWindowless[][2] = {
         {406, 2}, {530, 2}, {485, 2}, {568, 1}, {457, 1}, {533, 1},
         {439, 1}, {429, 1}, {480, 1}, {555, 1}, {536, 1}, {575, 1},
@@ -217,119 +283,10 @@ void LoadDrivebySettingsINI() {
     for (auto& entry : defaultWindowless) {
         gSettings.carsWithoutWindows[entry[0]] = entry[1];
     }
-
-    char iniPath[512];
-    std::snprintf(iniPath, sizeof(iniPath), "%s/DrivebySettings.ini", aml->GetConfigPath());
-    FILE* fp = std::fopen(iniPath, "r");
-    if (!fp) {
-        // Fallback to cleo folder path if user placed it there
-        fp = std::fopen("/storage/emulated/0/Android/data/com.rockstargames.gtasa/files/cleo/DrivebySettings.ini", "r");
-    }
-    if (!fp) {
-        logger->Info("DrivebySettings.ini not found, using built-in defaults.");
-        return;
-    }
-
-    std::string currentSection;
-    char lineBuf[512];
-    while (std::fgets(lineBuf, sizeof(lineBuf), fp)) {
-        std::string line(lineBuf);
-
-        // Strip comments (; or // or #)
-        size_t posSemicolon = line.find(';');
-        if (posSemicolon != std::string::npos) line.erase(posSemicolon);
-        size_t posSlashes = line.find("//");
-        if (posSlashes != std::string::npos) line.erase(posSlashes);
-
-        line = TrimStr(line);
-        if (line.empty() || line[0] == '#' || line[0] == '_') continue;
-
-        if (line.front() == '[' && line.back() == ']') {
-            currentSection = TrimStr(line.substr(1, line.size() - 2));
-            continue;
-        }
-
-        size_t eqPos = line.find('=');
-        if (eqPos == std::string::npos) continue;
-
-        std::string key = TrimStr(line.substr(0, eqPos));
-        std::string val = TrimStr(line.substr(eqPos + 1));
-        if (key.empty() || val.empty()) continue;
-
-        if (currentSection == "MAIN") {
-            if (key == "DrivebyControlType")   gSettings.drivebyControlType = std::atoi(val.c_str());
-            else if (key == "PreLoadIFP")      gSettings.preLoadIFP = (std::atoi(val.c_str()) > 0);
-            else if (key == "DisableBikeWeakPoint") gSettings.disableBikeWeakPoint = (std::atoi(val.c_str()) > 0);
-            else if (key == "NoDrivingWhileAiming") gSettings.noDrivingWhileAiming = std::atoi(val.c_str());
-            else if (key == "PrepareThrowAnim")     gSettings.prepareThrowAnim = (std::atoi(val.c_str()) > 0);
-            else if (key == "CloseWindowsAgain")    gSettings.closeWindowsAgain = (std::atoi(val.c_str()) > 0);
-            else if (key == "WindshieldMode")       gSettings.windshieldMode = std::atoi(val.c_str());
-            else if (key == "FixPedReactions")      gSettings.fixPedReactions = std::atoi(val.c_str());
-            else if (key == "RecruitBlip")          gSettings.recruitBlip = (std::atoi(val.c_str()) > 0);
-            else if (key == "CrosshairExpMult")     gSettings.crosshairExpMult = std::strtof(val.c_str(), nullptr);
-        }
-        else if (currentSection == "WEAPONSWITCH") {
-            if (key == "DPadButtonsMode")      gSettings.dpadButtonsMode = std::atoi(val.c_str());
-            else if (key == "SideLookButtons") gSettings.sideLookButtons = std::atoi(val.c_str());
-            else if (key == "EnableOnStory")   gSettings.enableOnStory = (std::atoi(val.c_str()) > 0);
-        }
-        else if (currentSection == "WEAPONSETTINGS") {
-            if (key == "FixShootRateOfNPC") {
-                gSettings.fixShootRateOfNPC = (std::atoi(val.c_str()) > 0);
-            } else if (key == "Default") {
-                std::sscanf(val.c_str(), "%f / %f / %f",
-                            &gSettings.defaultRates.poor,
-                            &gSettings.defaultRates.gangster,
-                            &gSettings.defaultRates.hitman);
-            } else if (std::isdigit((unsigned char)key[0])) {
-                int weapId = std::atoi(key.c_str());
-                if (weapId >= 0 && weapId < 256) {
-                    std::sscanf(val.c_str(), "%f / %f / %f",
-                                &gSettings.weaponRates[weapId].poor,
-                                &gSettings.weaponRates[weapId].gangster,
-                                &gSettings.weaponRates[weapId].hitman);
-                }
-            }
-        }
-        else if (currentSection == "CAMERA") {
-            if (key == "DistCar")         std::sscanf(val.c_str(), "%f / %f / %f", &gSettings.distCar[0], &gSettings.distCar[1], &gSettings.distCar[2]);
-            else if (key == "DistBike")   std::sscanf(val.c_str(), "%f / %f / %f", &gSettings.distBike[0], &gSettings.distBike[1], &gSettings.distBike[2]);
-            else if (key == "HeightCar")  std::sscanf(val.c_str(), "%f / %f / %f", &gSettings.heightCar[0], &gSettings.heightCar[1], &gSettings.heightCar[2]);
-            else if (key == "HeightBike") std::sscanf(val.c_str(), "%f / %f / %f", &gSettings.heightBike[0], &gSettings.heightBike[1], &gSettings.heightBike[2]);
-            else if (key == "TweakFOV")   std::sscanf(val.c_str(), "%f / %f / %f", &gSettings.tweakFOV[0], &gSettings.tweakFOV[1], &gSettings.tweakFOV[2]);
-            else if (key == "RestoreDistance") gSettings.restoreDistance = std::atoi(val.c_str());
-            else if (key == "JumpcutRestore")  gSettings.jumpcutRestore = std::atoi(val.c_str());
-            else if (key == "JumpcutCarSpeed") gSettings.jumpcutCarSpeed = std::strtof(val.c_str(), nullptr);
-            else if (key == "KeepAiming")      gSettings.keepAiming = std::atoi(val.c_str());
-            else if (key == "FreeLineOfSight") gSettings.freeLineOfSight = (std::atoi(val.c_str()) > 0);
-            else if (key == "NoAngleLimit")    gSettings.noAngleLimit = (std::atoi(val.c_str()) > 0);
-        }
-        else if (currentSection == "EXCEPTIONS") {
-            if (key == "DisableOnMission") gSettings.disableOnMission = (std::atoi(val.c_str()) > 0);
-            else if (key == "Cars")   gSettings.classMaskCars   = ParseExceptionMask(val.c_str());
-            else if (key == "Bikes")  gSettings.classMaskBikes  = ParseExceptionMask(val.c_str());
-            else if (key == "Boats")  gSettings.classMaskBoats  = ParseExceptionMask(val.c_str());
-            else if (key == "Helis")  gSettings.classMaskHelis  = ParseExceptionMask(val.c_str());
-            else if (key == "Planes") gSettings.classMaskPlanes = ParseExceptionMask(val.c_str());
-            else if (key == "Trains") gSettings.classMaskTrains = ParseExceptionMask(val.c_str());
-            else if (std::isdigit((unsigned char)key[0])) {
-                int modelId = std::atoi(key.c_str());
-                gSettings.modelExceptions[modelId] = ParseExceptionMask(val.c_str());
-            }
-        }
-        else if (currentSection == "CARSWITHOUTWINDOWS") {
-            if (std::isdigit((unsigned char)key[0])) {
-                int modelId = std::atoi(key.c_str());
-                gSettings.carsWithoutWindows[modelId] = std::atoi(val.c_str());
-            }
-        }
-    }
-    std::fclose(fp);
-    logger->Info("DrivebySettings.ini loaded successfully!");
 }
 
 // ============================================================================
-// 5. ENGINE HELPER FUNCTIONS (ARM64 SAFE)
+// 5. HELPER FUNCTIONS
 // ============================================================================
 inline uint32_t GetTicks() {
     return pTimeInMilliseconds ? *pTimeInMilliseconds : 0;
@@ -337,55 +294,43 @@ inline uint32_t GetTicks() {
 
 inline int16_t GetEntityModelIndex(CEntity* pEntity) {
     if (!pEntity) return -1;
-    // In GTA SA 64-bit v2.10, CEntity::m_nModelIndex is at offset 0x26
     return *(int16_t*)((uintptr_t)pEntity + 0x26);
 }
 
 inline eVehicleClass GetVehicleClass(CVehicle* pVeh) {
     if (!pVeh) return VEHICLE_AUTOMOBILE;
-    // In GTA SA 64-bit v2.10, CVehicle::m_dwVehicleSubClass is at offset 0x5A4
     return *(eVehicleClass*)((uintptr_t)pVeh + 0x5A4);
 }
 
-uint8_t GetAllowedWeaponMaskForVehicle(CVehicle* pVeh) {
-    if (!pVeh) return 0;
-    int modelId = GetEntityModelIndex((CEntity*)pVeh);
-    auto it = gSettings.modelExceptions.find(modelId);
-    if (it != gSettings.modelExceptions.end()) {
-        return it->second;
-    }
-
-    eVehicleClass vClass = GetVehicleClass(pVeh);
-    switch (vClass) {
-        case VEHICLE_BIKE:
-        case VEHICLE_BMX:
-        case VEHICLE_QUAD:
-            return gSettings.classMaskBikes;
-        case VEHICLE_HELI:
-        case VEHICLE_FHELI:
-            return gSettings.classMaskHelis;
-        case VEHICLE_PLANE:
-        case VEHICLE_FPLANE:
-            return gSettings.classMaskPlanes;
-        case VEHICLE_BOAT:
-            return gSettings.classMaskBoats;
-        case VEHICLE_TRAIN:
-            return gSettings.classMaskTrains;
-        default:
-            return gSettings.classMaskCars;
-    }
+inline void GetScreenResolution(float& outW, float& outH) {
+    outW = (pRsGlobalWidth  && *pRsGlobalWidth  > 0) ? (float)(*pRsGlobalWidth)  : 2340.0f;
+    outH = (pRsGlobalHeight && *pRsGlobalHeight > 0) ? (float)(*pRsGlobalHeight) : 1080.0f;
 }
 
-// Ported exact CLEO shoot rate calculation (:GetShootRate)
-float ComputePedDrivebyShootRate(CPed* pPed, CVehicle* pVeh) {
-    if (!pPed || !GetWeaponInfo) return 1.0f;
+CRect GetTouchIconRect() {
+    float scrW, scrH;
+    GetScreenResolution(scrW, scrH);
+    float scale = scrH / 1080.0f;
+    float halfSize = (gSettings.iconSizePx * scale) * 0.5f;
+    float centerX = scrW * gSettings.iconPosXRatio;
+    float centerY = scrH * gSettings.iconPosYRatio;
 
+    CRect r;
+    r.left   = centerX - halfSize;
+    r.right  = centerX + halfSize;
+    r.top    = centerY - halfSize;
+    r.bottom = centerY + halfSize;
+    return r;
+}
+
+float ComputePedDrivebyShootRate(CPed* pPed) {
+    if (!pPed || !GetWeaponInfo) return 1.0f;
     uint8_t activeSlot = *(uint8_t*)((uintptr_t)pPed + 0x8E8);
     if (activeSlot > 12) return 1.0f;
 
     uintptr_t weaponBase = (uintptr_t)pPed + 0x710 + (activeSlot * 0x20);
     eWeaponType weapId = *(eWeaponType*)(weaponBase + 0x00);
-    if (weapId == WEAPON_UNARMED || weapId >= 256) return 1.0f;
+    if (weapId == WEAPON_UNARMED || weapId >= 60) return 1.0f;
 
     int8_t skill = GetWeaponSkill ? GetWeaponSkill(pPed) : 1;
     if (skill < 0) skill = 0;
@@ -395,18 +340,10 @@ float ComputePedDrivebyShootRate(CPed* pPed, CVehicle* pVeh) {
     if (!pInfo) pInfo = GetWeaponInfo(weapId, 1);
     if (!pInfo) return 1.0f;
 
-    // Select configured multiplier for Poor (0), Gangster (1), Hitman (2)
     const SkillRates& sr = gSettings.weaponRates[weapId];
     float rateMult = (skill == 0) ? sr.poor : ((skill == 1) ? sr.gangster : sr.hitman);
-    if (rateMult == -2.0f) {
-        rateMult = (skill == 0) ? gSettings.defaultRates.poor :
-                   ((skill == 1) ? gSettings.defaultRates.gangster : gSettings.defaultRates.hitman);
-    }
-
     if (rateMult <= 0.0f) return 0.0f;
-    if (rateMult > 9.99f) rateMult = 1.0f;
 
-    // Read AnimLoop2Start (0x4C) & AnimLoop2End (0x50) from CWeaponInfo
     float animLoopStart = *(float*)((uintptr_t)pInfo + 0x4C);
     float animLoopEnd   = *(float*)((uintptr_t)pInfo + 0x50);
     float loopDelta     = animLoopEnd - animLoopStart;
@@ -414,9 +351,7 @@ float ComputePedDrivebyShootRate(CPed* pPed, CVehicle* pVeh) {
     if (loopDelta > 0.001f) {
         float animFactor = std::pow(loopDelta, -0.9596f) * 0.1749f;
         uint32_t flags = *(uint32_t*)((uintptr_t)pInfo + 0x18);
-        if (flags == 0x3833) { // Dual wielded compensation
-            animFactor *= 1.06f;
-        }
+        if (flags == 0x3833) animFactor *= 1.06f;
         rateMult *= animFactor;
     }
 
@@ -425,31 +360,17 @@ float ComputePedDrivebyShootRate(CPed* pPed, CVehicle* pVeh) {
     return rateMult;
 }
 
-bool IsWeaponSelectableForDriveby(CPed* pPed, CVehicle* pVeh, eWeaponType weapId) {
+bool IsWeaponValidForDriveby(eWeaponType weapId) {
     if (weapId == WEAPON_UNARMED) return true;
-    if (!GetWeaponInfo) return true;
-
+    if (weapId >= 60 || !GetWeaponInfo) return false;
     CWeaponInfo* pInfo = GetWeaponInfo(weapId, 1);
     if (!pInfo) return false;
-
     uint32_t fireType = *(uint32_t*)((uintptr_t)pInfo + 0x00);
-    if (fireType == WEAPON_FIRE_CAMERA) fireType = WEAPON_FIRE_INSTANT_HIT;
-    if (fireType < 1 || fireType > 3) return false;
-
-    // Submachine guns (Slot 5: Micro Uzi, MP5, Tec-9) are always allowed in vanilla
-    if (weapId != WEAPON_MICRO_UZI && weapId != WEAPON_MP5 && weapId != WEAPON_TEC9) {
-        uint8_t allowedMask = GetAllowedWeaponMaskForVehicle(pVeh);
-        if (!(allowedMask & (1 << fireType))) return false;
-    }
-
-    // Check if disabled (-1.0) in [WEAPONSETTINGS]
-    const SkillRates& sr = gSettings.weaponRates[weapId];
-    float cfgVal = sr.gangster;
-    if (cfgVal == -2.0f) cfgVal = gSettings.defaultRates.gangster;
-    return (cfgVal >= 0.0f);
+    if (fireType != WEAPON_FIRE_INSTANT_HIT && fireType != WEAPON_FIRE_PROJECTILE) return false;
+    return (gSettings.weaponRates[weapId].gangster >= 0.0f);
 }
 
-void CycleDrivebyWeapon(CPlayerPed* pPlayer, CVehicle* pVeh, int dir) {
+void CycleDrivebyWeapon(CPlayerPed* pPlayer, int dir) {
     if (!pPlayer || !SetCurrentWeapon) return;
     uint32_t now = GetTicks();
     if (now - g_nLastSwitchTick < 200) return;
@@ -462,9 +383,9 @@ void CycleDrivebyWeapon(CPlayerPed* pPlayer, CVehicle* pVeh, int dir) {
         eWeaponType weapId = *(eWeaponType*)(weaponBase + 0x00);
         int32_t totalAmmo  = *(int32_t*)(weaponBase + 0x0C);
 
-        if (curSlot == 0 || (totalAmmo > 0 && IsWeaponSelectableForDriveby((CPed*)pPlayer, pVeh, weapId))) {
+        if (curSlot == 0 || (totalAmmo > 0 && IsWeaponValidForDriveby(weapId))) {
             SetCurrentWeapon((CPed*)pPlayer, curSlot);
-            g_fCachedPlayerShootRate = ComputePedDrivebyShootRate((CPed*)pPlayer, pVeh);
+            g_fCachedPlayerShootRate = ComputePedDrivebyShootRate((CPed*)pPlayer);
             if (ReportFrontendAudioEvent && pAudioEngine) {
                 ReportFrontendAudioEvent(pAudioEngine, 32, 1.0f, 1.0f);
             }
@@ -473,9 +394,66 @@ void CycleDrivebyWeapon(CPlayerPed* pPlayer, CVehicle* pVeh, int dir) {
     }
 }
 
+void ManageVehicleWindows(CVehicle* pVeh, bool bOpen) {
+    if (!pVeh) return;
+    int modelId = GetEntityModelIndex((CEntity*)pVeh);
+    auto it = gSettings.carsWithoutWindows.find(modelId);
+    if (it != gSettings.carsWithoutWindows.end() && it->second >= 1) return;
+
+    eVehicleClass vClass = GetVehicleClass(pVeh);
+    if (vClass != VEHICLE_AUTOMOBILE && vClass != VEHICLE_MTRUCK) return;
+
+    if (bOpen && SetWindowOpenFlag) {
+        SetWindowOpenFlag(pVeh, 8);
+        SetWindowOpenFlag(pVeh, 10);
+    } else if (!bOpen && gSettings.closeWindowsAgain && ClearWindowOpenFlag) {
+        ClearWindowOpenFlag(pVeh, 8);
+        ClearWindowOpenFlag(pVeh, 9);
+        ClearWindowOpenFlag(pVeh, 10);
+        ClearWindowOpenFlag(pVeh, 11);
+    }
+}
+
+void StartOrStopDrivebyTask(CPlayerPed* pPlayer, CVehicle* pVeh, bool bStart) {
+    if (!pPlayer) return;
+    void* pPedIntelligence = *(void**)((uintptr_t)pPlayer + 0x570);
+    if (!pPedIntelligence) return;
+    void* pTaskMgr = (void*)((uintptr_t)pPedIntelligence + 0x08);
+
+    if (bStart) {
+        uint8_t curSlot = *(uint8_t*)((uintptr_t)pPlayer + 0x8E8);
+        uintptr_t weaponBase = (uintptr_t)pPlayer + 0x710 + (curSlot * 0x20);
+        eWeaponType activeWeap = *(eWeaponType*)(weaponBase + 0x00);
+
+        if (activeWeap == WEAPON_UNARMED || !IsWeaponValidForDriveby(activeWeap)) {
+            CycleDrivebyWeapon(pPlayer, 1);
+        } else {
+            g_fCachedPlayerShootRate = ComputePedDrivebyShootRate((CPed*)pPlayer);
+        }
+
+        ManageVehicleWindows(pVeh, true);
+
+        if (OperatorNew && TaskDriveByCtor && SetTaskSecondary) {
+            CTaskSimpleGangDriveBy* pTask = (CTaskSimpleGangDriveBy*)OperatorNew(128);
+            if (pTask) {
+                CVector zeroVec = {0.0f, 0.0f, 0.0f};
+                TaskDriveByCtor(pTask, nullptr, &zeroVec, 600.0f, 100, 4, false);
+                SetTaskSecondary(pTaskMgr, (CTask*)pTask, 1);
+            }
+        }
+    } else {
+        if (SetTaskSecondary) {
+            SetTaskSecondary(pTaskMgr, nullptr, 1);
+        }
+        if (gSettings.jumpcutRestore > 0 && RestoreCameraJumpCut && pTheCamera) {
+            RestoreCameraJumpCut(pTheCamera);
+        }
+    }
+}
+
 void ApplyDrivebyShootRate(CPed* pPed, float rateMult) {
     if (!pPed || !RpAnimBlendClumpGetAssociation || rateMult <= 0.0f) return;
-    void* pRpClump = *(void**)((uintptr_t)pPed + 0x18); // CEntity::m_pRwObject
+    void* pRpClump = *(void**)((uintptr_t)pPed + 0x18);
     if (!pRpClump) return;
 
     static const char* drivebyAnims[] = {
@@ -497,40 +475,57 @@ void ApplyDrivebyShootRate(CPed* pPed, float rateMult) {
     }
 }
 
-void ManageVehicleWindows(CVehicle* pVeh, bool bOpen) {
-    if (!pVeh) return;
-    int modelId = GetEntityModelIndex((CEntity*)pVeh);
-    auto it = gSettings.carsWithoutWindows.find(modelId);
-    if (it != gSettings.carsWithoutWindows.end() && it->second >= 1) {
-        return; // Vehicle has no door windows, prevent crash
+// ============================================================================
+// 6. ENGINE HOOKS (HUD ICON DRAWING + TOUCHSCREEN TAP + GAMEPLAY)
+// ============================================================================
+
+// Hook 1: Draw Cheeseburger's Driveby Icon on HUD when inside a vehicle
+DECL_HOOKv(CHud_DrawAfterFade) {
+    CHud_DrawAfterFade();
+
+    if (!gSettings.enableMod || !gSettings.showTouchIcon || !g_pCurrentVeh) return;
+
+    // Lazy-load the icon texture from "mobile" TXD (texdb/mobile/mobile.txt)
+    if (!g_bSpriteLoaded && TxdFindSlot && TxdPushCurrent && TxdSetCurrent && TxdPopCurrent && SpriteSetTexture) {
+        int32_t mobileSlot = TxdFindSlot("mobile");
+        if (mobileSlot != -1) {
+            TxdPushCurrent();
+            TxdSetCurrent(mobileSlot);
+            SpriteSetTexture(&g_DrivebyIconSprite, gSettings.iconTextureName);
+            TxdPopCurrent();
+        }
+        g_bSpriteLoaded = true;
     }
 
-    eVehicleClass vClass = GetVehicleClass(pVeh);
-    if (vClass != VEHICLE_AUTOMOBILE && vClass != VEHICLE_MTRUCK) return;
-
-    if (bOpen && SetWindowOpenFlag) {
-        SetWindowOpenFlag(pVeh, 8);  // Right front
-        SetWindowOpenFlag(pVeh, 10); // Left front
-    } else if (!bOpen && gSettings.closeWindowsAgain && ClearWindowOpenFlag) {
-        ClearWindowOpenFlag(pVeh, 8);
-        ClearWindowOpenFlag(pVeh, 9);
-        ClearWindowOpenFlag(pVeh, 10);
-        ClearWindowOpenFlag(pVeh, 11);
+    if (g_DrivebyIconSprite.m_pTexture && SpriteDraw) {
+        CRect iconRect = GetTouchIconRect();
+        // Semi-transparent when OFF (145 alpha), bright full-opacity when ON (255 alpha)
+        CRGBA iconColor = g_bInManualDriveby ? CRGBA(255, 255, 255, 255) : CRGBA(255, 255, 255, 145);
+        SpriteDraw(&g_DrivebyIconSprite, iconRect, iconColor);
     }
 }
 
-// ============================================================================
-// 6. ENGINE HOOKS (ARM64)
-// ============================================================================
+// Hook 2: Detect Finger Tap on the Driveby Icon
+// action: 0 = Touch Down, 1 = Touch Up, 2 = Touch Move
+DECL_HOOKv(AND_TouchEvent, int action, int pointerId, int x, int y) {
+    if (gSettings.enableMod && gSettings.showTouchIcon && g_pCurrentVeh && action == 0) {
+        CRect r = GetTouchIconRect();
+        if ((float)x >= r.left && (float)x <= r.right &&
+            (float)y >= r.top  && (float)y <= r.bottom) {
+            g_bTouchToggleRequested = true;
+            return; // Consume touch so it doesn't steer or fire accidentally
+        }
+    }
+    AND_TouchEvent(action, pointerId, x, y);
+}
 
-// Suppress side/behind look when in manual driveby or using SideLookButtons for weapon switching
 DECL_HOOK(bool, CPad_GetLookLeft, CPad* self) {
-    if (g_bInManualDriveby || (g_pCurrentVeh && gSettings.sideLookButtons == 1)) return false;
+    if (g_bInManualDriveby) return false;
     return CPad_GetLookLeft(self);
 }
 
 DECL_HOOK(bool, CPad_GetLookRight, CPad* self) {
-    if (g_bInManualDriveby || (g_pCurrentVeh && gSettings.sideLookButtons == 1)) return false;
+    if (g_bInManualDriveby) return false;
     return CPad_GetLookRight(self);
 }
 
@@ -539,19 +534,6 @@ DECL_HOOK(bool, CPad_GetLookBehindForCar, CPad* self) {
     return CPad_GetLookBehindForCar(self);
 }
 
-// Suppress steering/driving while aiming if NoDrivingWhileAiming > 0
-DECL_HOOK(int16_t, CPad_GetSteeringLeftRight, CPad* self) {
-    if (g_bInManualDriveby && gSettings.noDrivingWhileAiming > 0 && g_pCurrentVeh) {
-        eVehicleClass vc = GetVehicleClass(g_pCurrentVeh);
-        bool isBike = (vc == VEHICLE_BIKE || vc == VEHICLE_BMX);
-        if (gSettings.noDrivingWhileAiming == 1 || (gSettings.noDrivingWhileAiming == 2 && isBike)) {
-            return 0;
-        }
-    }
-    return CPad_GetSteeringLeftRight(self);
-}
-
-// Driveby Task Processing: Shoot Rate, Windshield Breaking, Crosshair Spread
 DECL_HOOK(bool, CTaskSimpleGangDriveBy_ProcessPed, CTaskSimpleGangDriveBy* self, CPed* pPed) {
     bool res = CTaskSimpleGangDriveBy_ProcessPed(self, pPed);
 
@@ -559,37 +541,29 @@ DECL_HOOK(bool, CTaskSimpleGangDriveBy_ProcessPed, CTaskSimpleGangDriveBy* self,
     if (pPed == (CPed*)pPlayer && g_bInManualDriveby) {
         ApplyDrivebyShootRate(pPed, g_fCachedPlayerShootRate);
 
-        // Break windshield when aiming/firing forward (WindshieldMode > 0)
         if (gSettings.windshieldMode > 0 && g_pCurrentVeh && DamageCarPanel) {
             int modelId = GetEntityModelIndex((CEntity*)g_pCurrentVeh);
             auto it = gSettings.carsWithoutWindows.find(modelId);
-            bool hasWindshield = (it == gSettings.carsWithoutWindows.end() || it->second < 2);
-            if (hasWindshield) {
+            if (it == gSettings.carsWithoutWindows.end() || it->second < 2) {
                 int8_t animDir = *(int8_t*)((uintptr_t)self + 0x24);
-                if (animDir == 0) { // Forward direction
-                    DamageCarPanel(g_pCurrentVeh, 4);
-                }
+                if (animDir == 0) DamageCarPanel(g_pCurrentVeh, 4);
             }
         }
     } else if (gSettings.fixShootRateOfNPC && pPed != (CPed*)pPlayer) {
-        float npcRate = ComputePedDrivebyShootRate(pPed, nullptr);
-        ApplyDrivebyShootRate(pPed, npcRate);
+        ApplyDrivebyShootRate(pPed, ComputePedDrivebyShootRate(pPed));
     }
-
     return res;
 }
 
-// Main Game Loop Hook
 DECL_HOOKv(CGame_Process) {
     CGame_Process();
 
-    if (!FindPlayerPed || !FindPlayerVehicle) return;
+    if (!gSettings.enableMod || !FindPlayerPed || !FindPlayerVehicle) return;
 
-    // Preload drivebys.ifp once (`PreLoadIFP = 1`)
     if (gSettings.preLoadIFP && !g_bIfpPreloaded && GetAnimationBlockIndex && RequestModel) {
         int32_t ifpIdx = GetAnimationBlockIndex("drivebys");
         if (ifpIdx != -1) {
-            RequestModel(ifpIdx + 25557, 0x02); // Keep IFP loaded
+            RequestModel(ifpIdx + 25557, 0x02);
             g_bIfpPreloaded = true;
         }
     }
@@ -602,12 +576,12 @@ DECL_HOOKv(CGame_Process) {
     CPlayerPed* pPlayer = FindPlayerPed(-1);
     CVehicle* pVeh = FindPlayerVehicle(-1, false);
 
-    // Handle Leaving Vehicle (Roll up windows if CloseWindowsAgain = 1)
     if (!pPlayer || !pVeh) {
         if (g_pLastActiveVeh && g_bInManualDriveby) {
             ManageVehicleWindows(g_pLastActiveVeh, false);
         }
         g_bInManualDriveby = false;
+        g_bTouchToggleRequested = false;
         g_pCurrentVeh = nullptr;
         g_pLastActiveVeh = nullptr;
         return;
@@ -619,82 +593,60 @@ DECL_HOOKv(CGame_Process) {
     CPad* pPad = GetPad ? GetPad(0) : nullptr;
     if (!pPad) return;
 
-    // Read Raw Look-Left / Look-Right before hook suppression
     bool bLookL = CPad_GetLookLeft(pPad);
     bool bLookR = CPad_GetLookRight(pPad);
     bool bComboPressed = (bLookL && bLookR);
 
-    // Toggle Manual Driveby when pressing LookLeft + LookRight simultaneously
-    if (bComboPressed && !g_bPrevToggleCombo) {
+    // Toggle via Touch Icon Tap OR Gamepad LookL+LookR Combo
+    if (g_bTouchToggleRequested || (bComboPressed && !g_bPrevComboPressed)) {
+        g_bTouchToggleRequested = false;
         g_bInManualDriveby = !g_bInManualDriveby;
+        StartOrStopDrivebyTask(pPlayer, pVeh, g_bInManualDriveby);
+        if (ReportFrontendAudioEvent && pAudioEngine) {
+            ReportFrontendAudioEvent(pAudioEngine, 1, 1.0f, 1.0f);
+        }
+    }
+    g_bPrevComboPressed = bComboPressed;
 
+    // Keep Driveby Task active while toggled on
+    if (g_bInManualDriveby && GetTaskSecondary) {
         void* pPedIntelligence = *(void**)((uintptr_t)pPlayer + 0x570);
         if (pPedIntelligence) {
             void* pTaskMgr = (void*)((uintptr_t)pPedIntelligence + 0x08);
-
-            if (g_bInManualDriveby) {
-                uint8_t curSlot = *(uint8_t*)((uintptr_t)pPlayer + 0x8E8);
-                uintptr_t weaponBase = (uintptr_t)pPlayer + 0x710 + (curSlot * 0x20);
-                eWeaponType activeWeap = *(eWeaponType*)(weaponBase + 0x00);
-
-                if (activeWeap == WEAPON_UNARMED || !IsWeaponSelectableForDriveby((CPed*)pPlayer, pVeh, activeWeap)) {
-                    CycleDrivebyWeapon(pPlayer, pVeh, 1);
-                } else {
-                    g_fCachedPlayerShootRate = ComputePedDrivebyShootRate((CPed*)pPlayer, pVeh);
-                }
-
-                // Roll down car windows safely
-                ManageVehicleWindows(pVeh, true);
-
-                // Start 360-degree Free-Aim Driveby Task (Style 4)
-                if (OperatorNew && TaskDriveByCtor && SetTaskSecondary) {
-                    CTaskSimpleGangDriveBy* pTask = (CTaskSimpleGangDriveBy*)OperatorNew(128);
-                    if (pTask) {
-                        CVector zeroVec = {0.0f, 0.0f, 0.0f};
-                        TaskDriveByCtor(pTask, nullptr, &zeroVec, 600.0f, 100, 4, false);
-                        SetTaskSecondary(pTaskMgr, (CTask*)pTask, 1);
-                    }
-                }
-            } else {
-                // Exit Manual Driveby
-                if (SetTaskSecondary) {
-                    SetTaskSecondary(pTaskMgr, nullptr, 1);
-                }
-                if (gSettings.jumpcutRestore > 0 && RestoreCameraJumpCut && pTheCamera) {
-                    RestoreCameraJumpCut(pTheCamera);
-                }
+            if (!GetTaskSecondary(pTaskMgr, 1)) {
+                StartOrStopDrivebyTask(pPlayer, pVeh, true);
             }
         }
     }
-    g_bPrevToggleCombo = bComboPressed;
 
-    // Weapon Switching while in Vehicle
-    bool canSwitchWeap = g_bInManualDriveby || (gSettings.sideLookButtons == 1);
-    if (canSwitchWeap && !bComboPressed) {
-        if (bLookR && !bLookL) {
-            CycleDrivebyWeapon(pPlayer, pVeh, 1);
-        } else if (bLookL && !bLookR) {
-            CycleDrivebyWeapon(pPlayer, pVeh, -1);
+    // Weapon Switching (Swipe Weapon Icon OR Controller Look Left/Right)
+    bool bSwipeNext = (gSettings.allowTouchWeaponSwipe && PadCycleWeaponRight) ? PadCycleWeaponRight(pPad) : false;
+    bool bSwipePrev = (gSettings.allowTouchWeaponSwipe && PadCycleWeaponLeft)  ? PadCycleWeaponLeft(pPad)  : false;
+
+    if (g_bInManualDriveby && !bComboPressed) {
+        if (bSwipeNext || (gSettings.sideLookButtons > 0 && bLookR && !bLookL)) {
+            CycleDrivebyWeapon(pPlayer, 1);
+            StartOrStopDrivebyTask(pPlayer, pVeh, true);
+        } else if (bSwipePrev || (gSettings.sideLookButtons > 0 && bLookL && !bLookR)) {
+            CycleDrivebyWeapon(pPlayer, -1);
+            StartOrStopDrivebyTask(pPlayer, pVeh, true);
         }
     }
 }
 
 // ============================================================================
-// 7. PLUGIN INITIALIZATION
+// 7. PLUGIN ENTRY POINT
 // ============================================================================
 extern "C" void OnModLoad() {
     logger->SetTag("ManualDrivebySA");
 
-    LoadDrivebySettingsINI();
+    InitAndSaveConfig();
+    if (!gSettings.enableMod) return;
 
     hGTASA = aml->GetLibHandle("libGTASA.so");
     pGTASA = aml->GetLib("libGTASA.so");
-    if (!hGTASA || !pGTASA) {
-        logger->Error("Failed to locate libGTASA.so!");
-        return;
-    }
+    if (!hGTASA || !pGTASA) return;
 
-    // Resolve Engine Functions via Symbols
     SET_TO(FindPlayerPed,            aml->GetSym(hGTASA, "_Z13FindPlayerPedi"));
     SET_TO(FindPlayerVehicle,        aml->GetSym(hGTASA, "_Z17FindPlayerVehicleib"));
     SET_TO(GetPad,                   aml->GetSym(hGTASA, "_ZN4CPad6GetPadEi"));
@@ -708,25 +660,42 @@ extern "C" void OnModLoad() {
     SET_TO(GetAnimationBlockIndex,   aml->GetSym(hGTASA, "_ZN12CAnimManager22GetAnimationBlockIndexEPKc"));
     SET_TO(RequestModel,             aml->GetSym(hGTASA, "_ZN10CStreaming12RequestModelEii"));
     SET_TO(RestoreCameraJumpCut,     aml->GetSym(hGTASA, "_ZN7CCamera14RestoreWithJumpCutEv"));
+    SET_TO(PadCycleWeaponRight,      aml->GetSym(hGTASA, "_ZN4CPad20CycleWeaponRightJustDownEv"));
+    SET_TO(PadCycleWeaponLeft,       aml->GetSym(hGTASA, "_ZN4CPad19CycleWeaponLeftJustDownEv"));
+
+    // Sprite & TXD Store Symbols
+    SET_TO(TxdFindSlot,              aml->GetSym(hGTASA, "_ZN9CTxdStore11FindTxdSlotEPKc"));
+    SET_TO(TxdPushCurrent,           aml->GetSym(hGTASA, "_ZN9CTxdStore14PushCurrentTxdEv"));
+    SET_TO(TxdPopCurrent,            aml->GetSym(hGTASA, "_ZN9CTxdStore13PopCurrentTxdEv"));
+    SET_TO(TxdSetCurrent,            aml->GetSym(hGTASA, "_ZN9CTxdStore13SetCurrentTxdEi"));
+    SET_TO(SpriteSetTexture,         aml->GetSym(hGTASA, "_ZN9CSprite2d10SetTextureEPc"));
+    SET_TO(SpriteDraw,               aml->GetSym(hGTASA, "_ZN9CSprite2d4DrawERK5CRectRK5CRGBA"));
+
     SET_TO(OperatorNew,              aml->GetSym(hGTASA, "_Znwm"));
     SET_TO(TaskDriveByCtor,          aml->GetSym(hGTASA, "_ZN22CTaskSimpleGangDriveByC2EP7CEntityPK7CVectorfaab"));
     SET_TO(SetTaskSecondary,         aml->GetSym(hGTASA, "_ZN12CTaskManager16SetTaskSecondaryEP5CTaski"));
     SET_TO(GetTaskSecondary,         aml->GetSym(hGTASA, "_ZN12CTaskManager16GetTaskSecondaryEi"));
     SET_TO(RpAnimBlendClumpGetAssociation, aml->GetSym(hGTASA, "_Z30RpAnimBlendClumpGetAssociationP7RpClumpPKc"));
 
-    // Resolve Globals
     SET_TO(pTheCamera,               aml->GetSym(hGTASA, "TheCamera"));
     SET_TO(pAudioEngine,             aml->GetSym(hGTASA, "AEAudioHardware"));
     SET_TO(pTimeInMilliseconds,      aml->GetSym(hGTASA, "_ZN6CTimer22m_snTimeInMillisecondsE"));
     SET_TO(pOnAMissionFlag,          aml->GetSym(hGTASA, "OnAMissionFlag"));
 
-    // Install ARM64 Hooks
+    void* pRsGlobal = aml->GetSym(hGTASA, "RsGlobal");
+    if (pRsGlobal) {
+        // In 64-bit RsGlobalType, maximumWidth is at +0x08 and maximumHeight is at +0x0C
+        pRsGlobalWidth  = (int32_t*)((uintptr_t)pRsGlobal + 0x08);
+        pRsGlobalHeight = (int32_t*)((uintptr_t)pRsGlobal + 0x0C);
+    }
+
+    HOOKSYM(CHud_DrawAfterFade,                hGTASA, "_ZN4CHud13DrawAfterFadeEv");
+    HOOKSYM(AND_TouchEvent,                    hGTASA, "_Z14AND_TouchEventiiii");
     HOOKSYM(CPad_GetLookLeft,                  hGTASA, "_ZN4CPad11GetLookLeftEv");
     HOOKSYM(CPad_GetLookRight,                 hGTASA, "_ZN4CPad12GetLookRightEv");
     HOOKSYM(CPad_GetLookBehindForCar,          hGTASA, "_ZN4CPad19GetLookBehindForCarEv");
-    HOOKSYM(CPad_GetSteeringLeftRight,         hGTASA, "_ZN4CPad20GetSteeringLeftRightEv");
     HOOKSYM(CTaskSimpleGangDriveBy_ProcessPed, hGTASA, "_ZN22CTaskSimpleGangDriveBy10ProcessPedEP4CPed");
     HOOKSYM(CGame_Process,                     hGTASA, "_ZN5CGame7ProcessEv");
 
-    logger->Info("Manual Driveby Refixed v1.1 (64-bit AML 2.10) initialized!");
+    logger->Info("Manual Driveby Refixed v1.3 with Touch Icon loaded!");
 }
