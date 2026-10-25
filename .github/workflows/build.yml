@@ -1,0 +1,42 @@
+name: Build AML 64-bit Plugin
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # Allows you to trigger the build manually with a button click
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Fetch Official AML SDK Headers
+        run: |
+          git clone --depth=1 https://github.com/AndroidModLoader/GTASA_ModTemplate.git /tmp/aml_template
+          if [ -d "/tmp/aml_template/mod" ]; then
+            cp -r /tmp/aml_template/mod ./jni/
+          elif [ -d "/tmp/aml_template/jni/mod" ]; then
+            cp -r /tmp/aml_template/jni/mod ./jni/
+          elif [ -d "/tmp/aml_template/include/mod" ]; then
+            cp -r /tmp/aml_template/include/mod ./jni/
+          fi
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+          add-to-path: true
+
+      - name: Compile arm64-v8a Binary
+        run: |
+          ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./jni/Android.mk NDK_APPLICATION_MK=./jni/Application.mk -j$(nproc)
+
+      - name: Upload Compiled .so Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libManualDrivebySA-arm64-v8a
+          path: libs/arm64-v8a/libManualDrivebySA.so
+          if-no-files-found: error
