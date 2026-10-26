@@ -1,0 +1,1559 @@
+{$CLEO .cs}
+{$USE cleo+}
+{$USE ini}
+0000: nop
+03A4: script_name 'DBYFNPC'
+wait 0
+wait 0
+
+0@ = 2
+
+if
+    0AA2: 31@ = load_dynamic_library "CLEO+.cleo"
+jf @ILoveMyGirlfriendJessica
+if
+    0AA4: 30@ = get_dynamic_library_procedure "GetCleoPlusVersion" library 31@
+then
+    0AA7: call_function_return 30@ num_params 0 pop 0 29@
+end
+0AA3: free_dynamic_library 31@
+if
+    29@ >= 0x1020000
+jf @ILoveMyGirlfriendJessica
+
+0@ = 1
+
+if
+    0AAB: does_file_exist "cleo\DrivebySettings.ini"
+jf @ILoveMyGirlfriendJessica
+
+for 31@ = 0 to 10 step 1
+    wait 0
+end
+
+0@ = 0
+
+11@ = -1
+12@ = -1
+13@ = -1
+14@ = -2
+16@ = -1
+17@ = -1
+31@ = 0
+
+0AAA: 31@ = get_script_struct_named 'MANDRBY'
+if and
+    31@ <> 0
+    31@ <> -1
+jf @ILoveMyGirlfriendJessica
+0D2F: 24@ = get_script_var 31@ index 14
+if or
+    24@ > 2
+    24@ < -1
+then
+    31@ = 0
+    if
+        0AF0: 31@ = read_int_from_ini_file "cleo\DrivebySettings.ini" section "WEAPONSETTINGS" key "FixShootRateOfNPC"
+    then
+        if
+            31@ > 0
+        then
+            08BD: set_local_var_bit_const 0@ bit 3
+        end
+    end
+end
+
+31@ = 0
+if
+    0AF0: 31@ = read_int_from_ini_file "cleo\DrivebySettings.ini" section "MAIN" key "FixPedReactions"
+then
+    if
+        31@ > 0
+    then
+        08BD: set_local_var_bit_const 0@ bit 1
+        if
+            31@ > 1
+        then
+            08BD: set_local_var_bit_const 0@ bit 2
+        end
+        if
+            0AF0: 31@ = read_int_from_ini_file "cleo\DrivebySettings.ini" section "MAIN" key "RecruitBlip"
+        then
+            if
+                31@ > 0
+            then
+                14@ = -1
+            end
+        end
+    end
+end
+if and
+    88B7: not is_local_var_bit_set_const 0@ bit 1
+    88B7: not is_local_var_bit_set_const 0@ bit 3
+then
+    0A93: terminate_this_custom_script
+end
+
+20@ = -1
+21@ = -1
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+:Main
+while true
+    wait 0
+    if and
+        0256: is_player_playing $PLAYER_CHAR
+        8EB7: not is_on_scripted_cutscene
+    jf @Main
+    
+    if
+        08B7: is_local_var_bit_set_const 0@ bit 1
+    then        
+        gosub @ResetStuff
+        if and
+            0449: is_char_sitting_in_any_car $PLAYER_ACTOR
+            0E42: is_char_doing_task_id $PLAYER_ACTOR task_id 1022  //driveby
+            88B7: not is_local_var_bit_set_const 0@ bit 7   // Set by other script
+        then              
+            03C0: 3@ = store_car_char_is_in_no_save $PLAYER_ACTOR
+            02E3: get_car_speed 29@ car 3@
+            if
+                not 29@ > 20.0
+            then
+                // The normal target recognition system doesn't work during driveby. So we need to build a new one.
+                0A97: 29@ = get_vehicle_pointer 3@
+                0A8C: write_memory 0x00B7CD68 size 4 value 29@ virtual_protect 0 // static CEntity *CWorld::pIgnoreEntity
+                
+                0A96: 29@ = get_ped_pointer $PLAYER_ACTOR
+                0AC7: get_var_pointer 4@ = var 4@
+                0AA6: call_method 0x5E4280 struct 29@ num_params 3 pop 0 bIncludeAnim 1 iBoneID 25 vPosition 4@ // CPed__getBonePosition
+                
+                // Find crosshair target coords
+                0AC7: get_var_pointer 18@ = var 7@
+                0AC7: get_var_pointer 19@ = var 26@
+                0AA6: call_method {CCamera::Find3rdPersonCamTargetVector} 0x514970 struct 0xB6F028 num_params 6 pop 0 _targetOut 18@ _cameraOut 19@ _z 6@ _y 5@ _x 4@ _range 25.0                
+                if
+                    86BD: not is_line_of_sight_clear 4@ 5@ 6@ 7@ 8@ 9@ buildings 1 cars 1 chars 1 objects 0 particles 0 // Check if anything is between CJ's right hand and the crosshair target
+                then                  
+                    for 31@ = 0.5 to 25.0 step 0.5
+                        0AA6: call_method {CCamera::Find3rdPersonCamTargetVector} 0x514970 struct 0xB6F028 num_params 6 pop 0 _targetOut 18@ _cameraOut 19@ _z 6@ _y 5@ _x 4@ _range 31@                       
+                        if
+                            86BD: not is_line_of_sight_clear 4@ 5@ 6@ 7@ 8@ 9@ buildings 0 cars 1 chars 1 objects 0 particles 0
+                        then                             
+                            0A8C: write_memory 0x00B7CD68 size 4 value 0 virtual_protect 0 // static CEntity *CWorld::pIgnoreEntity
+                            
+                            31@ = 0
+                            if
+                                08B7: is_local_var_bit_set_const 0@ bit 3
+                            then                            
+                                while 0EA7: get_any_char_no_save_recursive 31@ progress_to 31@ char_to 1@
+                                    if
+                                        8118: not is_char_dead 1@            
+                                    then
+                                        if
+                                            0E42: is_char_doing_task_id 1@ task_id 1022  //driveby
+                                        then
+                                            if
+                                                07D6: is_int_lvar_equal_to_int_var 1@ == $PLAYER_ACTOR
+                                            gosub_if_false @ShootRateFix
+                                            jump @HomieSupport                        
+                                        end
+                                        if
+                                            00EC: locate_char_any_means_2d 1@ sphere 0 near_point 7@ 8@ radius 1.28 1.28
+                                        then
+                                            gosub @PedReactions
+                                        else
+                                            :HomieSupport
+                                            if
+                                                20@ > -1
+                                            then
+                                                if
+                                                    80DB: not is_char_in_car 1@ car 3@
+                                                gosub_if_false @HomieAttack
+                                            end
+                                        end      
+                                    end
+                                end
+                            else                            
+                                while 0EA7: get_any_char_no_save_recursive 31@ progress_to 31@ char_to 1@
+                                    if
+                                        8118: not is_char_dead 1@            
+                                    then
+                                        if
+                                            00EC: locate_char_any_means_2d 1@ sphere 0 near_point 7@ 8@ radius 1.28 1.28
+                                        then
+                                            gosub @PedReactions
+                                        else
+                                            if
+                                                20@ > -1
+                                            then
+                                                if
+                                                    80DB: not is_char_in_car 1@ car 3@
+                                                gosub_if_false @HomieAttack
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            gosub @CheckForGangWar
+                            jump @Main
+                        end
+                    end
+                end
+                0A8C: write_memory 0x00B7CD68 size 4 value 0 virtual_protect 0 // static CEntity *CWorld::pIgnoreEntity
+            end
+        end
+        if
+            20@ <> -1
+        then
+            gosub @CheckForGangWar
+            0A96: 26@ = get_ped_pointer $PLAYER_ACTOR
+            0E28: write_struct_offset 26@ offset 0x79C size 4 value 0x0   // Reset targetted status for removing the green triangle above the ped head
+            08C3: clear_local_var_bit_const 0@ bit 12
+            20@ = -1
+        end
+        if
+            08B7: is_local_var_bit_set_const 0@ bit 3
+        jf @Main
+    end
+    
+    if
+        0ADC: test_cheat "MOMSREVENGE"
+    then
+        if
+            88B7: not is_local_var_bit_set_const 0@ bit 0
+        then
+            08BD: set_local_var_bit_const 0@ bit 0
+            03E5: print_help 'CHEAT1'
+        else
+            08C3: clear_local_var_bit_const 0@ bit 0
+            03E5: print_help 'CHEAT8'
+            2@ = 0
+        end
+    end
+    
+    31@ = 0
+                       
+    while 0EA7: get_any_char_no_save_recursive 31@ progress_to 31@ char_to 1@
+        if
+            8118: not is_char_dead 1@            
+        then
+            if
+                0E42: is_char_doing_task_id 1@ task_id 1022  //driveby
+            then
+                if
+                    07D6: is_int_lvar_equal_to_int_var 1@ == $PLAYER_ACTOR
+                gosub_if_false @ShootRateFix
+            end
+        end
+    end
+end
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+:PedReactions    
+if
+    0449: is_char_sitting_in_any_car 1@
+then
+    0085: set_lvar_int_to_lvar_int 20@ = 1@
+    03C0: 26@ = store_car_char_is_in_no_save 1@
+    02E3: get_car_speed 27@ car 26@
+    if
+        not 27@ > 20.0
+    return_if_false
+    if
+        803B: not is_int_lvar_equal_to_int_lvar 1@ <> 30@   // Only do this once if the ped isn't valid or if reactions have already been applied
+    return_if_false
+else
+    if
+        00EC: locate_char_any_means_2d 1@ sphere 0 near_point 7@ 8@ radius 0.44 0.44
+    return_if_false
+    if
+        803B: not is_int_lvar_equal_to_int_lvar 1@ <> 20@
+    then
+        0A96: 26@ = get_ped_pointer $PLAYER_ACTOR
+        0A96: 27@ = get_ped_pointer 1@
+        0E28: write_struct_offset 26@ offset 0x79C size 4 value 27@ // Set char as targetted (Creates the green triangle obove the head)
+        0085: set_lvar_int_to_lvar_int 20@ = 1@
+    end
+    if
+        803B: not is_int_lvar_equal_to_int_lvar 1@ <> 30@   // Only do this once if the ped isn't valid or if reactions have already been applied
+    return_if_false
+    
+    0ECB: get_char_move_state 1@ store_to 28@
+    if
+        28@ > 6 // Sprinting (mostly when in panic)
+    then
+        if
+            TIMERA < 2000
+        return_if_false
+        0EFA: get_char_fear 1@ store_to 28@
+        if and
+            28@ > 50
+            0E4D: random_percent 70
+        then
+            0687: clear_char_tasks 1@
+            0673: task_dive_and_get_up 1@ dive_to_offset 0.0 1.0 time_on_ground 99999   // Play dead
+            060B: set_char_decision_maker 1@ decision_maker_to 65543    // Indoors
+        end
+        jump @NoCheckAgain
+    end
+    if and
+        8597: not is_char_ducking 1@
+        8E48: not is_char_fallen_on_ground 1@
+        89DE: not is_char_getting_in_to_a_car 1@
+        8E46: not is_char_using_gun 1@
+    return_if_false
+end
+
+0EB1: get_char_stat_id 1@ store_to 28@
+07AF: get_player_group 15@ = player $PLAYER_CHAR
+if and
+    28@ <> 41   // No mission char
+    86EE: not is_group_member 1@ in_group 15@
+jf @NoCheckAgain
+
+089F: get_ped_type 1@ pedtype_to 10@
+
+// Grove Street Gang
+if
+    10@ == 8
+then
+    if or
+        0118: is_char_dead 11@
+        0118: is_char_dead 12@
+        0118: is_char_dead 13@
+    jf @NoCheckAgain
+    0A8D: 28@ = read_memory 0xB79480 size 4 virtual_protect 0   // Respect stat
+    01E9: get_number_of_passengers 26@ = car 3@
+    01EA: get_maximum_number_of_passengers 29@ = car 3@
+    if and
+        28@ >= 60.0 // 6% Respect, needed for being able to recruit at least 3 members
+        001D: is_int_lvar_greater_than_int_lvar 29@ > 26@
+    jf @NoCheckAgain
+    
+    if
+        0449: is_char_sitting_in_any_car 1@
+    then
+        if
+            28@ >= 800.0    // 80% Respect
+        jf @NoCheckAgain
+        if            
+            not 27@ > 14.0  // Only on low car speeds
+        return_if_false
+    else
+        if
+            28@ < 330.0 // If respect is low, CJ needs a cool car
+        then
+            08EC: get_vehicle_class 10@ car 3@
+            if or
+                10@ == 3    // Sport cars
+                096F: is_car_street_racer 3@
+                096E: is_car_low_rider 3@
+                0137: is_car_model 3@ model 477    // ZR-30
+                0137: is_car_model 3@ model 603    // Phoenix
+            jf @NoCheckAgain
+        end
+    end
+    
+    // Create green cone above head (Usual blips only support red and blue color)   
+    if
+        14@ == -1
+    then
+        04C4: get_offset_from_char_in_world_coords 26@ 27@ 28@ from_actor 1@ with_offset 0.0 0.0 2.56
+        0A40: create_user_3d_marker 14@ = create_entrance_marker_at 26@ 27@ 28@ color 1
+    end
+    
+    // Recruit button pressed?
+    if
+        0A4B: is_pc_using_joypad
+    then                  
+        if and
+            80E1: not is_button_pressed pad 0 button 8
+            80E1: not is_button_pressed pad 0 button 9
+            80E1: not is_button_pressed pad 0 button 18
+        then
+            0A8C: write_memory 0xB73468 size 2 value 0x00 virtual_protect 0 //D-Pad Up
+            0A8C: write_memory 0xB7346A size 2 value 0x00 virtual_protect 0 //D-Pad Down
+            return
+        end
+        0A8C: write_memory 0xB73468 size 2 value 0x00 virtual_protect 0 //D-Pad Up
+        0A8C: write_memory 0xB7346A size 2 value 0x00 virtual_protect 0 //D-Pad Down
+        08BD: set_local_var_bit_const 0@ bit 6
+    else           
+        if or
+            0AB0: is_key_pressed 71
+            0AB0: is_key_pressed 72
+            00E1: is_button_pressed pad 0 button 18
+        return_if_false
+    end
+    
+    // Recruit
+    06C9: remove_char_from_group 1@ 
+    01C2: mark_char_as_no_longer_needed 1@
+    0687: clear_char_tasks 1@
+    0E0B: mark_char_as_needed 1@
+          
+    0A96: 26@ = get_ped_pointer $PLAYER_ACTOR
+    0A96: 27@ = get_ped_pointer 1@
+    0AA6: call_method 0x60C840 struct 26@ num_params 1 pop 0 27@    //char __thiscall CPlayerPed::MakeThisPedJoinOurGroup(CPed *this, CPed *a2)
+        
+    07B3: set_group_default_task_allocator 15@ give_command 4   // Sit in leader car
+    
+    if
+        8118: not is_char_dead 11@
+    then
+        0E16: get_extended_char_var 11@ 'AUTO' 1 4@
+    end
+    if
+        8118: not is_char_dead 12@
+    then
+        0E16: get_extended_char_var 12@ 'AUTO' 1 5@
+    end
+    if
+        8118: not is_char_dead 13@
+    then
+        0E16: get_extended_char_var 13@ 'AUTO' 1 6@
+    end
+    
+    // Enter car
+    29@ -= 1
+    for 26@ = 0 to 29@ step 1
+        if and
+            0431: is_car_passenger_seat_free 3@ passenger_seat_free 26@
+            803B: not is_int_lvar_equal_to_int_lvar 26@ <> 4@
+            803B: not is_int_lvar_equal_to_int_lvar 26@ <> 5@
+            803B: not is_int_lvar_equal_to_int_lvar 26@ <> 6@
+        then
+            05CA: task_enter_car_as_passenger 1@ enter_car 3@ passenger_seat 26@ time 30000
+            039E: set_char_cant_be_dragged_out 1@ locked 1
+            0526: set_char_stay_in_car_when_jacked 1@ stay_in_car_when_jacked 1
+            0E14: init_extended_char_vars 1@ 'AUTO' 1
+            0E15: set_extended_char_var 1@ 'AUTO' 1 26@              
+            break
+        end
+    end
+    
+    // For monitoring the members later, we need to do this to prevent the member from leaving the car right after the task is finished 
+    if
+        0118: is_char_dead 11@
+    then
+        0085: set_lvar_int_to_lvar_int 11@ = 1@
+    else
+        if
+            0118: is_char_dead 12@
+        then
+            0085: set_lvar_int_to_lvar_int 12@ = 1@
+        else
+            0085: set_lvar_int_to_lvar_int 13@ = 1@
+        end
+    end
+    08BD: set_local_var_bit_const 0@ bit 4
+    08BD: set_local_var_bit_const 0@ bit 5
+    TIMERB = 0
+    return         
+end
+
+if
+    09ED: has_char_spotted_char_in_front 1@ is_within_field_of_view_actor $PLAYER_ACTOR
+return_if_false
+if and
+    20@ > -1
+    88B7: not is_local_var_bit_set_const 0@ bit 12
+then
+    08BD: set_local_var_bit_const 0@ bit 12
+    05C1: task_say $PLAYER_ACTOR speak_from_audio_table 176 // CJ's voice lines when targetting someone
+end
+
+// Cops & Enemy Gangs
+if and
+    10@ > 5
+    10@ < 13
+then
+    if
+        8A03: not is_gang_war_fighting_going_on
+    jf @NoCheckAgain
+    
+    if
+        10@ == 6    // Cop
+    then
+        if
+            810F: not is_wanted_level_greater $PLAYER_CHAR level 0
+        then
+            8@ = -4200.0
+            if
+                8E5D: not is_cheat_active 65    // NoWanted
+            jf @NoCheckAgain
+            010D: alter_wanted_level $PLAYER_CHAR level 1
+            return
+        end
+        if or
+            0118: is_char_dead 16@
+            0118: is_char_dead 17@
+        jf @NoCheckAgain
+        if and
+            803B: not is_int_lvar_equal_to_int_lvar 1@ <> 16@
+            803B: not is_int_lvar_equal_to_int_lvar 1@ <> 17@
+        jf @NoCheckAgain
+        
+        if
+            8449: not is_char_sitting_in_any_car 1@
+        jf @TriggerDriveby
+
+        gosub @GetWeapon
+        if
+            28@ > 0
+        jf @NoCheckAgain
+        
+        if
+            TIMERA < 2000
+        return_if_false
+         
+        0687: clear_char_tasks 1@
+        07DD: set_char_shoot_rate 1@ attack_rate 90
+        0350: set_char_stay_in_same_place 1@ maintain_position_when_attacked 1
+        
+        0208: generate_random_float_in_range 26@ = random_float_in_ranges 0.5 1.5
+        0209: generate_random_int_in_range 27@ = random_int_in_ranges 0 1 
+        
+        0615: open_sequence_task 29@
+        if
+            0E4D: random_percent 20
+        then               
+            0673: task_dive_and_get_up -1 dive_to_offset 26@ 0.0 time_on_ground 100
+        else
+            if
+                0E4D: random_percent 80
+            then
+                04EB: task_toggle_duck -1 crouch 1
+                06E3: task_weapon_roll -1 roll_sideways 27@
+                04EB: task_toggle_duck -1 crouch 1
+            end
+        end
+        05E2: task_kill_char_on_foot -1 kill_actor $PLAYER_ACTOR 
+        0616: close_sequence_task 29@
+        0618: perform_sequence_task 1@ to_AS_pack 29@
+        061B: clear_sequence_task 29@
+        
+        // Monitoring the cops later. If CJ stops shooting, they will stop as well and try to arrest again.
+        if
+            0118: is_char_dead 16@
+        then
+            0085: set_lvar_int_to_lvar_int 16@ = 1@
+        else
+            0085: set_lvar_int_to_lvar_int 17@ = 1@
+        end
+        jump @NoCheckAgain
+    end
+    
+    // Gangs
+    if
+        0449: is_char_sitting_in_any_car 1@
+    then
+        :TriggerDriveby
+        046C: get_driver_of_car 29@ = car 26@
+        if and
+            29@ > 0
+            8E42: not is_char_doing_task_id 1@ task_id 1022  //driveby
+        jf @NoCheckAgain
+        if
+            003B: is_int_lvar_equal_to_int_lvar 1@ == 29@
+        then
+            01E9: get_number_of_passengers 28@ = car 26@
+            if
+                28@ == 0
+            jf @NoCheckAgain
+        end
+        if
+            TIMERA < 2000
+        return_if_false
+        gosub @GetWeapon
+        if
+            28@ > 0
+        jf @NoCheckAgain
+        0687: clear_char_tasks 1@
+        06E1: task_car_mission 29@ using_car 26@ target_car 3@ with_order 29 max_speed 80.0 traffic_flag 2         
+        0713: task_drive_by 1@ driveby_actor $PLAYER_ACTOR car -1 point 0.0 0.0 0.0 radius 300.0 8 0 firing_rate 80
+    else
+        29@ = 0
+        0E16: get_extended_char_var 1@ 'AUTO' 1 29@
+        if
+            29@ < 1
+        jf @NoCheckAgain  
+        0A96: 28@ = get_ped_pointer 1@
+        0AA7: call_function_return 0x5F7E80 num_params 1 pop 1 28@ 29@  //char *CPedGroups::GetPedsGroup(CPed *ped)
+        if
+            29@ > 0
+        then
+            28@ = 0        
+            0AA7: call_function_return 0x5F7EE0 num_params 1 pop 1 29@ 28@  //signed int CPedGroups::GetGroupId(CPedGroup *pedgrp)
+            if
+                28@ > 0
+            then
+                0AA5: call_function 0x5FB870 num_params 1 pop 1 28@ //void CPedGroups::RemoveGroup(int groupID)
+                06C9: remove_char_from_group 1@
+            end
+        end
+        gosub @GangReactions       
+        if
+            06FF: are_any_chars_near_char 1@ in_range 6.0
+        then
+            30@ = 0               
+            while 0EA7: get_any_char_no_save_recursive 30@ progress_to 30@ char_to 1@
+                if
+                    8118: not is_char_dead 1@            
+                then
+                    if
+                        00F3: locate_char_on_foot_char_2d 1@ near_actor 20@ radius 6.0 6.0 sphere 0
+                    then
+                        if
+                            803B: not is_int_lvar_equal_to_int_lvar 1@ <> 20@
+                        then
+                            29@ = 0
+                            0E16: get_extended_char_var 1@ 'AUTO' 1 29@
+                            0ECB: get_char_move_state 1@ store_to 28@
+                            0EB1: get_char_stat_id 1@ store_to 27@
+                            089F: get_ped_type 1@ pedtype_to 26@                           
+                            if and
+                                29@ <> 1
+                                28@ < 7
+                                27@ <> 41
+                                003B: is_int_lvar_equal_to_int_lvar 26@ == 10@
+                                8597: not is_char_ducking 1@
+                                8E48: not is_char_fallen_on_ground 1@
+                                89DE: not is_char_getting_in_to_a_car 1@
+                                8E46: not is_char_using_gun 1@
+                            then
+                                gosub @GangReactions
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end  
+    jump @NoCheckAgain
+end
+
+// Dealer, they have their own script that updates their behavior every frame.
+if
+    10@ == 17
+then
+    0A96: 26@ = get_ped_pointer $PLAYER_ACTOR
+    0A96: 27@ = get_ped_pointer 1@
+    0E28: write_struct_offset 27@ offset 0x764 size 4 value 26@ // Emulates "damaged by player" status. The Dealer script will do the rest for us.
+    jump @NoCheckAgain
+end
+
+// Normal peds
+if or
+    10@ == 4
+    10@ == 5
+    10@ == 20
+    10@ == 21
+    10@ == 22
+then
+    if
+        0449: is_char_sitting_in_any_car 1@
+    then
+        046C: get_driver_of_car 27@ = car 26@
+        if 
+            003B: is_int_lvar_equal_to_int_lvar 1@ == 27@
+        jf @NoCheckAgain
+        gosub @GetWeapon
+        if or
+            28@ < 1
+            0E4D: random_percent 30
+        then
+            0687: clear_char_tasks 1@
+            07E7: task_drive_point_route_advanced 1@ in_car 26@ speed 80.0 flags 0 0 2  // Flee in car
+        end 
+    else
+        0687: clear_char_tasks 1@
+        gosub @GetWeapon
+        if and
+            28@ > 0
+            0E4D: random_percent 70
+        then
+            07DD: set_char_shoot_rate 1@ attack_rate 90
+            0350: set_char_stay_in_same_place 1@ maintain_position_when_attacked 1
+            05E2: task_kill_char_on_foot -1 kill_actor $PLAYER_ACTOR
+        else
+            if
+                TIMERA < 2000
+            then
+                if
+                    0E4D: random_percent 30
+                jf @Amygdala
+                0673: task_dive_and_get_up 1@ dive_to_offset 0.0 1.0 time_on_ground 99999 // Play dead
+            else
+                :Amygdala
+                gosub @FearReactions
+            end
+        end
+        
+        if
+            06FF: are_any_chars_near_char 1@ in_range 6.0
+        then
+            30@ = 0               
+            while 0EA7: get_any_char_no_save_recursive 30@ progress_to 30@ char_to 1@
+                if
+                    8118: not is_char_dead 1@            
+                then
+                    if
+                        00F3: locate_char_on_foot_char_2d 1@ near_actor 20@ radius 6.0 6.0 sphere 0
+                    then
+                        if
+                            803B: not is_int_lvar_equal_to_int_lvar 1@ <> 20@
+                        then
+                            089F: get_ped_type 1@ pedtype_to 26@
+                            if or
+                                26@ == 4
+                                26@ == 5
+                                26@ == 21
+                                26@ == 22
+                            then
+                                0EB1: get_char_stat_id 1@ store_to 27@
+                                0ECB: get_char_move_state 1@ store_to 28@                           
+                                if and
+                                    27@ <> 41
+                                    28@ < 7
+                                    8597: not is_char_ducking 1@
+                                    8E48: not is_char_fallen_on_ground 1@
+                                    89DE: not is_char_getting_in_to_a_car 1@
+                                    8E46: not is_char_using_gun 1@
+                                then
+                                    gosub @GetWeapon
+                                    if or
+                                        28@ < 1
+                                        0E4D: random_percent 30
+                                    then
+                                        0687: clear_char_tasks 1@
+                                        gosub @FearReactions
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end 
+    end
+end
+
+:NoCheckAgain
+0085: set_lvar_int_to_lvar_int 30@ = 20@
+return
+
+
+:GangReactions
+0687: clear_char_tasks 1@
+gosub @GetWeapon
+0A8D: 26@ = read_memory 0xB79480 size 4 virtual_protect 0   // Respect stat
+0EF4: clamp_float 26@ min 10.0 max 1000.0 store_to 26@
+26@ /= -40.0
+0092: cset_lvar_int_to_lvar_float 27@ 26@
+27@ += 100
+if and
+    28@ > 0
+    0E4D: random_percent 27@
+then
+    07DD: set_char_shoot_rate 1@ attack_rate 90
+    0350: set_char_stay_in_same_place 1@ maintain_position_when_attacked 1
+    0615: open_sequence_task 29@
+    05BF: task_look_at_char -1 look_at_actor $PLAYER_ACTOR 100                   
+    0639: task_turn_char_to_face_char -1 rotate_to_actor $PLAYER_ACTOR
+    05BF: task_look_at_char -1 look_at_actor $PLAYER_ACTOR 100
+    if
+        0E4D: random_percent 20
+    then
+        04EB: task_toggle_duck -1 crouch 1
+    end
+    05E2: task_kill_char_on_foot -1 kill_actor $PLAYER_ACTOR
+else
+    26@ *= -2.4
+    0092: cset_lvar_int_to_lvar_float 27@ 26@
+    0615: open_sequence_task 29@
+    05BF: task_look_at_char -1 look_at_actor $PLAYER_ACTOR 100                   
+    0639: task_turn_char_to_face_char -1 rotate_to_actor $PLAYER_ACTOR
+    05BF: task_look_at_char -1 look_at_actor $PLAYER_ACTOR 100
+    if
+        0E4D: random_percent 27@
+    then  
+        if
+            0E4D: random_percent 80
+        then
+            05DD: task_smart_flee_char -1 flee_from_actor $PLAYER_ACTOR from_origin_radius 200.0 timelimit 60000
+        else
+            05C5: task_duck -1 cower 60000
+        end
+    else
+        if
+            0E4D: random_percent 60
+        then
+            05C2: task_shake_fist -1
+        end
+        if
+            0E4D: random_percent 27@
+        then
+            05DE: task_wander_standard -1
+        else
+            05E2: task_kill_char_on_foot -1 kill_actor $PLAYER_ACTOR
+        end
+    end                
+end
+0E14: init_extended_char_vars 1@ 'AUTO' 1
+0E15: set_extended_char_var 1@ 'AUTO' 1 1
+jump @EndTaskSequence
+
+
+:FearReactions
+0208: generate_random_float_in_range 26@ = random_float_in_ranges 0.5 1.0
+0615: open_sequence_task 29@
+05BF: task_look_at_char -1 look_at_actor $PLAYER_ACTOR 100
+if
+    0E4D: random_percent 8
+then
+    0673: task_dive_and_get_up -1 dive_to_offset 26@ 0.0 time_on_ground 100
+else                    
+    0639: task_turn_char_to_face_char -1 rotate_to_actor $PLAYER_ACTOR
+    05BF: task_look_at_char -1 look_at_actor $PLAYER_ACTOR 100
+    if and
+        0E4D: random_percent 40
+        003B: is_int_lvar_equal_to_int_lvar 1@ == 20@
+    then
+        if
+            0E4D: random_percent 80
+        then                
+            05C4: task_hands_up -1 hands_up 4000
+        else
+            05C3: task_cower -1
+        end
+    end
+end
+if
+    0E4D: random_percent 70
+then
+    05DD: task_smart_flee_char -1 flee_from_actor $PLAYER_ACTOR from_origin_radius 200.0 timelimit 99999
+else
+    05C5: task_duck -1 cower 60000
+end
+
+:EndTaskSequence
+0616: close_sequence_task 29@
+0618: perform_sequence_task 1@ to_AS_pack 29@
+061B: clear_sequence_task 29@
+return
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+:HomieAttack
+if and
+    TIMERA < 1000
+    056D: does_char_exist 20@
+return_if_false
+089F: get_ped_type 20@ pedtype_to 27@
+0EB1: get_char_stat_id 1@ store_to 28@
+07AF: get_player_group 15@ = player $PLAYER_CHAR
+if and
+    27@ <> 8
+    28@ <> 41   // No mission char
+    06EE: is_group_member 1@ in_group 15@
+return_if_false
+gosub @GetWeapon
+if
+    28@ > 0
+return_if_false
+0713: task_drive_by 1@ driveby_actor 20@ car -1 point 0.0 0.0 0.0 radius 300.0 8 0 firing_rate 100
+return_if_false
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+:GetWeapon
+0470: 27@ = get_current_char_weapon 1@
+if
+    27@ < 22
+return_if_false
+6@ = 6
+repeat
+    04B8: get_char_weapon_in_slot 1@ slot 6@ weapon 27@ ammo 28@ model 5@
+    if
+        28@ > 0
+    then
+        01B9: set_current_char_weapon 1@ armed_weapon_to 27@
+        return
+    end
+    6@ -= 1
+until 6@ < 3
+return
+
+
+:CheckForGangwar
+if
+    TIMERA < 1000
+return_if_false
+if and
+    08B7: is_local_var_bit_set_const 0@ bit 2
+    056D: does_char_exist 20@
+    887A: not is_gang_war_going_on
+return_if_false
+089F: get_ped_type 20@ pedtype_to 10@   // Gangs only
+if and
+    10@ > 6
+    10@ < 13
+return_if_false
+if
+    22@ == 0
+then
+    00A0: get_char_coordinates $PLAYER_ACTOR store_to 4@ 5@ 6@
+    08F1: get_name_of_info_zone 4@ 5@ 6@ nameB_to 22@s
+    076D: get_zone_gang_strength 22@s gang 0 density_to 26@ // Ballas
+    076D: get_zone_gang_strength 22@s gang 2 density_to 27@ // Vagos
+    076D: get_zone_gang_strength 22@s gang 3 density_to 28@ // Rifas
+    076D: get_zone_gang_strength 22@s gang 4 density_to 29@ // Da Nang
+    if or
+        26@ > 0
+        27@ > 0
+        28@ > 0
+        29@ > 0
+    then
+        0A8D: 26@ = read_memory 0x96AB90 size 1 virtual_protect 0   // bool &CGangWars::bGangWarsActive
+        if
+            26@ > 0
+        then
+            0A8D: 26@ = read_memory 0x96AB93 size 1 virtual_protect 0 // bool &CGangWars::bCanTriggerGangWarWhenOnAMission
+            if or
+                26@ > 0
+                8E1D: not is_on_mission
+            then
+                0652: get_int_stat 21@ = integer_stat 239   //Number of enemy gang members killed
+            end
+        end
+    end
+else
+    if
+        21@ > -1
+    then
+        0652: get_int_stat 29@ = integer_stat 239
+        0062: sub_int_lvar_from_int_lvar 29@ -= 21@
+        if
+            29@ > 2
+        then
+            0AA5: call_function 0x446050 num_params 0 pop 0  // CGangWars__StartOffensiveGangWar
+            22@ = 0
+            21@ = -1
+        end
+    end
+end
+return
+
+
+:ResetStuff
+if
+    02E0: is_char_shooting $PLAYER_ACTOR
+then
+    TIMERA = 0
+end
+if
+    22@ <> 0
+then
+    if or
+        22@s == 'SAN_AND'
+        8583: not is_player_in_info_zone $PLAYER_CHAR 22@s                   
+    then
+        22@ = 0
+        21@ = -1                    
+    else
+        if
+            21@ > -1
+        then
+            if
+                TIMERA > 30000                           
+            then
+                0652: get_int_stat 21@ = integer_stat 239   //Number of enemy gang members killed                                        
+            end
+        end
+    end
+end
+if
+    TIMERA > 6000
+then    
+    // Cop Monitoring               
+    if or
+        16@ <> -1
+        17@ <> -1
+    then
+        if
+            8118: not is_char_dead 16@
+        then
+            0687: clear_char_tasks 16@ 
+        end
+        if
+            8118: not is_char_dead 17@
+        then
+            0687: clear_char_tasks 17@ 
+        end
+        16@ = -1
+        17@ = -1
+    end
+end
+
+// Member Monitoring
+if
+    14@ > -1
+then
+    0A41: remove_user_3d_marker 14@ // Green blip needs to get updated every frame because it's static
+    14@ = -1
+end
+
+if
+    08B7: is_local_var_bit_set_const 0@ bit 4
+then    
+    if or
+        8118: not is_char_dead 11@
+        8118: not is_char_dead 12@
+        8118: not is_char_dead 13@
+    jf @ResetRecruitment
+    
+    if
+        8119: not is_car_dead 3@
+    jf @ResetRecruitment
+    
+    if
+        08B7: is_local_var_bit_set_const 0@ bit 4
+    then
+        if
+            8449: not is_char_sitting_in_any_car $PLAYER_ACTOR
+        then       
+            if
+                8E4A: not is_char_exiting_any_car $PLAYER_ACTOR
+            then
+                :ResetRecruitment
+                07B3: set_group_default_task_allocator 15@ give_command 0   // Follow leader
+                
+                if
+                    8118: not is_char_dead 11@
+                then
+                    02A9: set_char_only_damaged_by_player 11@ immune_to_nonplayer 0 
+                    01C2: mark_char_as_no_longer_needed 11@
+                    0631: set_group_member 11@ in_group 15@
+                end
+                if
+                    8118: not is_char_dead 12@
+                then
+                    02A9: set_char_only_damaged_by_player 12@ immune_to_nonplayer 0 
+                    01C2: mark_char_as_no_longer_needed 12@
+                    0631: set_group_member 12@ in_group 15@
+                end
+                if
+                    8118: not is_char_dead 13@
+                then
+                    02A9: set_char_only_damaged_by_player 13@ immune_to_nonplayer 0 
+                    01C2: mark_char_as_no_longer_needed 13@
+                    0631: set_group_member 13@ in_group 15@
+                end                                      
+                
+                11@ = -1
+                12@ = -1
+                13@ = -1       
+                08C3: clear_local_var_bit_const 0@ bit 4
+            end
+        else
+            if
+                08B7: is_local_var_bit_set_const 0@ bit 5
+            then                                                                                   
+                for 31@ = 11 to 13 step 1
+                    if
+                        31@ == 11
+                    then
+                        if
+                            8118: not is_char_dead 11@
+                        jf continue
+                        if
+                            0E16: get_extended_char_var 11@ 'AUTO' 1 26@
+                        jf continue
+                        if
+                            26@ > -1
+                        jf continue
+                        0085: set_lvar_int_to_lvar_int 1@ = 11@
+                    else
+                        if
+                            31@ == 12
+                        then
+                            if
+                                8118: not is_char_dead 12@
+                            jf continue
+                            if
+                                0E16: get_extended_char_var 12@ 'AUTO' 1 26@
+                            jf continue
+                            if
+                                26@ > -1
+                            jf continue
+                            0085: set_lvar_int_to_lvar_int 1@ = 12@
+                        else
+                            if
+                                8118: not is_char_dead 13@
+                            jf continue
+                            if
+                                0E16: get_extended_char_var 13@ 'AUTO' 1 26@
+                            jf continue
+                            if
+                                26@ > -1
+                            jf continue
+                            0085: set_lvar_int_to_lvar_int 1@ = 13@
+                        end
+                    end
+                    if
+                        8449: not is_char_sitting_in_any_car 1@
+                    then
+                        if 
+                            06EE: is_group_member 1@ in_group 15@
+                        then
+                            TIMERB = 0
+                            if
+                                09DE: is_char_getting_in_to_a_car 1@
+                            then
+                                06C9: remove_char_from_group 1@
+                                039E: set_char_cant_be_dragged_out 1@ locked 1
+                                0526: set_char_stay_in_car_when_jacked 1@ stay_in_car_when_jacked 1
+                            end
+                        else
+                            if or
+                                0E4A: is_char_exiting_any_car 1@
+                                0E48: is_char_fallen_on_ground 1@
+                            then
+                                TIMERB = 0
+                                05CA: task_enter_car_as_passenger 1@ enter_car 3@ passenger_seat 26@ time 30000
+                                039E: set_char_cant_be_dragged_out 1@ locked 1
+                                0526: set_char_stay_in_car_when_jacked 1@ stay_in_car_when_jacked 1
+                            else                                  
+                                if and
+                                    TIMERB > 4000
+                                    8E49: not is_char_entering_any_car 1@
+                                then
+                                    01C2: mark_char_as_no_longer_needed 1@
+                                    if
+                                        31@ == 11  
+                                    then
+                                        11@ = -1
+                                    else
+                                        if
+                                            31@ == 12  
+                                        then
+                                            12@ = -1
+                                        else
+                                            13@ = -1
+                                        end
+                                    end
+                                    jump @FinishMonitoring
+                                end
+                            end
+                        end                             
+                    else
+                        if
+                            TIMERB > 4000
+                        then
+                            0631: set_group_member 1@ in_group 15@
+                            039E: set_char_cant_be_dragged_out 1@ locked 1
+                            0526: set_char_stay_in_car_when_jacked 1@ stay_in_car_when_jacked 1
+                            054A: set_char_can_be_shot_in_vehicle 1@ can_be_shot_in_a_car 0
+                            02A9: set_char_only_damaged_by_player 1@ immune_to_nonplayer 1
+                            0E15: set_extended_char_var 1@ 'AUTO' 1 -1
+                    
+                            :FinishMonitoring
+                            03C0: 3@ = store_car_char_is_in_no_save $PLAYER_ACTOR
+                            01E9: get_number_of_passengers 26@ = car 3@
+                            046D: get_number_of_followers 27@ = actor $PLAYER_ACTOR
+                            if
+                                002D: is_int_lvar_greater_or_equal_to_int_lvar 26@ >= 27@
+                            then
+                                08C3: clear_local_var_bit_const 0@ bit 5
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end 
+end             
+
+if
+    08B7: is_local_var_bit_set_const 0@ bit 6
+return_if_false
+if and
+    80E1: not is_button_pressed pad 0 button 8
+    80E1: not is_button_pressed pad 0 button 9 
+then
+    08C3: clear_local_var_bit_const 0@ bit 6
+    return
+end
+0A8C: write_memory 0xB73468 size 2 value 0x00 virtual_protect 0 //D-Pad Up
+0A8C: write_memory 0xB7346A size 2 value 0x00 virtual_protect 0 //D-Pad Down
+return  
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+:ShootRateFix 
+0470: 10@ = get_current_char_weapon 1@
+0E83: get_current_char_weaponinfo 1@ store_to 28@
+if 
+    803B: not is_int_lvar_equal_to_int_lvar 28@ <> 2@
+then
+    0085: set_lvar_int_to_lvar_int 2@ = 28@
+    0D4E: 27@ = read_struct_offset 28@ offset 0x30 size 4   //skill level
+    0EF7: clamp_int 27@ min 0 max 2 store_to 27@
+    0A90: int_mul 26@ = 27@ * 0x04
+    if
+        10@ < 256
+    jf @DefaultSetting
+    0A90: int_mul 29@ = 10@ * 0x0C
+    005A: add_int_lvar_to_int_lvar 29@ += 26@
+    0D4E: 25@ = read_struct_offset 24@ offset 29@ size 4
+    if
+        25@ == -2.0
+    then
+        :DefaultSetting
+        26@ += 0xC00
+        0D4E: 25@ = read_struct_offset 24@ offset 26@ size 4
+    end    
+    if or
+        25@ < 0.01
+        25@ > 9.99
+    then
+        25@ = 1.0
+    end       
+
+    0D4E: 29@ = read_struct_offset 28@ offset 0x18 size 4   //Flags
+    if and
+        29@ == 14387    //Dual wielded
+        27@ > 0
+    then
+        27@ -= 1
+        0E84: get_weaponinfo 10@ skill 27@ store_to 28@
+    end
+    
+    0D4E: 26@ = read_struct_offset 28@ offset 0x50 size 4  //AnimLoop2End
+    0D4E: 27@ = read_struct_offset 28@ offset 0x4C size 4  //AnimLoop2Start
+    0063: sub_float_lvar_from_float_lvar 26@ -= 27@
+    0AEE: 27@ = 26@ pow -0.9596   
+    27@ *= 0.1749
+    if
+        803B: not is_int_lvar_equal_to_int_lvar 28@ <> 2@
+    then
+        27@ *= 1.06  //Compensation for slower single shoot rates with dual wielded weapons
+    end
+    006B: mult_float_lvar_by_float_lvar 25@ *= 27@
+    0EF4: clamp_float 25@ min 0.01 max 8.0 store_to 25@
+    
+    if and
+        25@ < 1.02
+        25@ > 0.98
+    then
+        25@ = 1.00
+    end
+end
+
+0E8B: get_char_weapon_state 1@ store_to 29@
+if
+    29@ <> 1
+then
+    if
+        29@ == 3
+    then
+        0687: clear_char_tasks 1@
+        0555: remove_weapon_from_char 10@ from_actor 1@
+        return
+    end
+    if and
+        25@ <> 1.0
+        TIMERB > 333
+    return_if_false
+    0087: set_lvar_float_to_lvar_float 29@ = 25@
+    25@ = 1.0
+    gosub @ShootRateApply
+    0087: set_lvar_float_to_lvar_float 25@ = 29@
+    return
+end
+if
+    02E0: is_char_shooting 1@
+return_if_false
+
+07AF: get_player_group 15@ = player $PLAYER_CHAR
+089F: get_ped_type 1@ pedtype_to 29@
+if or
+    06EE: is_group_member 1@ in_group 15@
+    29@ == 8
+then
+    041A: get_ammo_in_char_weapon 29@ = actor 1@ weapon 10@                                   
+    if
+        29@ < 50
+    then
+        017B: set_char_ammo 1@ 10@ 200
+    end
+    if and
+        25@ < 5.0
+        08B7: is_local_var_bit_set_const 0@ bit 0
+    then     
+        25@ = 5.0
+        2@ = 0
+    end
+    
+    // Driveby reaction
+    if and
+        TIMERB > 666
+        08B7: is_local_var_bit_set_const 0@ bit 1
+    then
+        if and
+            8E1D: not is_on_mission
+            0449: is_char_sitting_in_any_car $PLAYER_ACTOR
+        then
+            03C0: 3@ = store_car_char_is_in_no_save $PLAYER_ACTOR
+            if
+                00DB: is_char_in_car 1@ in_car 3@
+            then
+                29@ = 0            
+                while 0EA8: get_any_car_no_save_recursive 29@ progress_to 29@ car_to 4@
+                    if
+                        8119: not is_car_dead 4@
+                    then
+                        if
+                            0EE8: locate_car_distance_to_car 4@ car 3@ radius 40.0
+                        then
+                            if
+                                051C: has_car_been_damaged_by_char 4@ damaged_by_actor 1@
+                            then
+                                01E9: get_number_of_passengers 26@ = car 4@
+                                if
+                                    26@ > 0
+                                then
+                                    046C: get_driver_of_car 30@ = car 4@
+                                    if
+                                        30@ > 0
+                                    then 
+                                        089F: get_ped_type 30@ pedtype_to 27@
+                                        if
+                                            27@ == 6
+                                        then
+                                            if
+                                                010F: is_wanted_level_greater $PLAYER_CHAR level 0
+                                            jf continue
+                                        else
+                                            if and
+                                                27@ > 6
+                                                27@ < 13
+                                                27@ <> 8
+                                            jf continue
+                                        end
+                                        if and
+                                            84C8: not is_char_in_flying_vehicle 30@
+                                            84A7: not is_char_in_any_boat 30@
+                                            89AE: not is_char_in_any_train 30@
+                                        then
+                                            0085: set_lvar_int_to_lvar_int 10@ = 1@  
+                                            01EA: get_maximum_number_of_passengers 9@ = car 4@
+                                            9@ -= 1
+                                            for 26@ = 0 to 9@ step 1
+                                                if
+                                                    8431: not is_car_passenger_seat_free 4@ passenger_seat_free 26@
+                                                then
+                                                    0432: get_char_in_car_passenger_seat 1@ = get_actor_handle_from_car 4@ passenger_seat 26@
+                                                    if
+                                                        8118: not is_char_dead 1@
+                                                    then 
+                                                        if
+                                                            8E42: not is_char_doing_task_id 1@ task_id 1022  //driveby
+                                                        then  
+                                                            gosub @GetWeapon
+                                                            if
+                                                                28@ > 0
+                                                            then
+                                                                054A: set_char_can_be_shot_in_vehicle 10@ can_be_shot_in_a_car 0
+                                                                0687: clear_char_tasks 1@
+                                                                06E1: task_car_mission 30@ using_car 4@ target_car 3@ with_order 29 max_speed 80.0 traffic_flag 2 
+                                                                0713: task_drive_by 1@ driveby_actor 10@ car -1 point 0.0 0.0 0.0 radius 300.0 8 0 firing_rate 80
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                            0085: set_lvar_int_to_lvar_int 1@ = 10@             
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+else
+    if
+        29@ == 6
+    then
+        if and
+            TIMERA > 4000
+            08B7: is_local_var_bit_set_const 0@ bit 1
+        then
+            if and              
+                8E1D: not is_on_mission
+                810F: not is_wanted_level_greater $PLAYER_CHAR level 2
+            then
+                0687: clear_char_tasks 1@
+                return
+            end
+        end
+    end
+end
+
+if
+    25@ <> 1.0
+return_if_false
+
+TIMERB = 0
+
+:ShootRateApply
+if
+    847A: not is_char_on_any_bike 1@
+jf @BikeAnims 
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebylhs"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebylhs" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebyrhs"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebyrhs" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebylhs_fwd"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebylhs_fwd" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebylhs_bwd"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebylhs_bwd" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebytop_lhs"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebytop_lhs" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebytop_rhs"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebytop_rhs" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebyrhs_fwd"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebyrhs_fwd" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "gang_drivebyrhs_bwd"
+then
+    0393: set_char_anim_speed 1@ "gang_drivebyrhs_bwd" 25@
+    return
+end
+
+:BikeAnims
+if
+    0611: is_char_playing_anim 1@ performing "pass_driveby_lhs"
+then
+    0393: set_char_anim_speed 1@ "pass_driveby_lhs" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "pass_driveby_rhs"
+then
+    0393: set_char_anim_speed 1@ "pass_driveby_rhs" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "pass_driveby_fwd"
+then
+    0393: set_char_anim_speed 1@ "pass_driveby_fwd" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "pass_driveby_bwd"
+then
+    0393: set_char_anim_speed 1@ "pass_driveby_bwd" 25@
+end
+if
+    0611: is_char_playing_anim 1@ performing "cop_dvby_l"
+then
+    0393: set_char_anim_speed 1@ "cop_dvby_l" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "cop_dvby_r"
+then
+    0393: set_char_anim_speed 1@ "cop_dvby_r" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "cop_dvby_ft"
+then
+    0393: set_char_anim_speed 1@ "cop_dvby_ft" 25@
+    return
+end
+if
+    0611: is_char_playing_anim 1@ performing "cop_dvby_b"
+then
+    0393: set_char_anim_speed 1@ "cop_dvby_b" 25@
+    return
+end
+return
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+:ILoveMyGirlfriendJessica
+TIMERA = 0
+
+repeat
+    wait 0
+    if
+        0@ == 2
+    then
+        0AD1: print_formatted_now "Manual Driveby Refixed: CLEO+ 1.2.0 or newer required. It's a plugin for CLEO. Please download and install it." time 200
+    end
+    if
+        0@ == 1
+    then
+        0AD1: print_formatted_now "Manual Driveby Refixed: Failed to find the file 'DrivebySettings.ini'. Check the file path or file name." time 200
+    end
+    if
+        0@ == 0
+    then
+        0AD1: print_formatted_now "Failed to find the file 'ManualDrivebyRefixed.cs'. If you want only NPC fixes disable all vehicle types in the ini file instead" time 200
+    end
+    if and
+        09E7: is_player_control_on $PLAYER_CHAR
+        816B: not fading
+    jf @ILoveMyGirlfriendJessica
+until TIMERA > 10000 
+
+0A93: terminate_this_custom_script
