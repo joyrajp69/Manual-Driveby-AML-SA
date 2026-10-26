@@ -15,26 +15,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch AML 1.4.0 SDK Headers
+      - name: Fetch AML 1.4.0 SDK Headers and Sources
         run: |
           mkdir -p jni/include/mod
           # Clone official AndroidModLoader repository
           git clone --depth 1 https://github.com/RusJJ/AndroidModLoader.git /tmp/aml
           
-          # Copy headers to jni/include/mod/ so <mod/amlmod.h> resolves properly
+          # Copy headers and cpp source implementations (logger.cpp, config.cpp, etc.)
           if [ -d "/tmp/aml/mod" ]; then
-            cp -rf /tmp/aml/mod/*.h jni/include/mod/ || true
+            cp -rf /tmp/aml/mod/* jni/include/mod/ || true
           fi
           if [ -d "/tmp/aml/include" ]; then
             cp -rf /tmp/aml/include/* jni/include/ || true
           fi
 
-          # Verify amlmod.h exists
+          # Fallback check for amlmod.h and logger.cpp
           if [ ! -f "jni/include/mod/amlmod.h" ]; then
-            echo "Failed to locate amlmod.h from repository structure, searching..."
-            find /tmp/aml -name "amlmod.h" -exec dirname {} \; | head -n 1 | xargs -I {} cp -rf {}/*.h jni/include/mod/
+            echo "Searching for headers/sources..."
+            find /tmp/aml -name "amlmod.h" -exec dirname {} \; | head -n 1 | xargs -I {} cp -rf {}/* jni/include/mod/
           fi
           
+          echo "Files in jni/include/mod/:"
           ls -la jni/include/mod/
 
       - name: Set up Android NDK
