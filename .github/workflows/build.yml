@@ -18,13 +18,24 @@ jobs:
       - name: Fetch AML 1.4.0 SDK Headers
         run: |
           mkdir -p jni/include/mod
+          # Clone official AndroidModLoader repository
           git clone --depth 1 https://github.com/RusJJ/AndroidModLoader.git /tmp/aml
-          cp -r /tmp/aml/include/* jni/include/ || cp -r /tmp/aml/mod/* jni/include/mod/ || true
-          # Fallback to AML template headers if layout differs
-          if [ ! -f "jni/include/mod/amlmod.h" ]; then
-            git clone --depth 1 https://github.com/AndroidModLoader/GTASA_CLEO_AudioStreams.git /tmp/aml_tpl
-            cp -r /tmp/aml_tpl/include/mod/* jni/include/mod/
+          
+          # Copy headers to jni/include/mod/ so <mod/amlmod.h> resolves properly
+          if [ -d "/tmp/aml/mod" ]; then
+            cp -rf /tmp/aml/mod/*.h jni/include/mod/ || true
           fi
+          if [ -d "/tmp/aml/include" ]; then
+            cp -rf /tmp/aml/include/* jni/include/ || true
+          fi
+
+          # Verify amlmod.h exists
+          if [ ! -f "jni/include/mod/amlmod.h" ]; then
+            echo "Failed to locate amlmod.h from repository structure, searching..."
+            find /tmp/aml -name "amlmod.h" -exec dirname {} \; | head -n 1 | xargs -I {} cp -rf {}/*.h jni/include/mod/
+          fi
+          
+          ls -la jni/include/mod/
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
@@ -33,13 +44,13 @@ jobs:
           add-to-path: true
 
       - name: Build 64-bit .so with ndk-build
-        working-directory: jni
         run: |
+          cd jni
           ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk NDK_APPLICATION_MK=./Application.mk -j$(nproc)
 
       - name: Upload Compiled .so Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ManualDrivebyRefixed-ARM64
-          path: libs/arm64-v8a/libManualDriveby.so
+          path: jni/libs/arm64-v8a/libManualDriveby.so
           if-no-files-found: error
