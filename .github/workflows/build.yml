@@ -13,18 +13,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch Official AML SDK Headers
+      - name: Fetch Official AML SDK Headers & Sources
         run: |
-          git clone --depth=1 "https://github.com/RusJJ/AndroidModLoader.git" /tmp/aml_template
-          if [ -d "/tmp/aml_template/template_of_mod/mod" ]; then
-            cp -r /tmp/aml_template/template_of_mod/mod ./jni/
-          elif [ -d "/tmp/aml_template/template_of_mod/jni/mod" ]; then
-            cp -r /tmp/aml_template/template_of_mod/jni/mod ./jni/
-          elif [ -d "/tmp/aml_template/mod" ]; then
-            cp -r /tmp/aml_template/mod ./jni/
-          else
-            echo "Error: Mod headers folder not found in repository!" && exit 1
+          git clone --depth=1 "https://github.com/RusJJ/AndroidModLoader.git" /tmp/aml_repo
+          mkdir -p ./jni/mod
+          if [ -d "/tmp/aml_repo/template_of_mod/mod" ]; then
+            cp -r /tmp/aml_repo/template_of_mod/mod/* ./jni/mod/
+          elif [ -d "/tmp/aml_repo/include/mod" ]; then
+            cp -r /tmp/aml_repo/include/mod/* ./jni/mod/
+            cp /tmp/aml_repo/mod/*.cpp ./jni/mod/ 2>/dev/null || true
+          elif [ -d "/tmp/aml_repo/mod" ]; then
+            cp -r /tmp/aml_repo/mod/* ./jni/mod/
           fi
+          ls -la ./jni/mod/
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -42,3 +43,4 @@ jobs:
           name: libManualDrivebySA-arm64-v8a
           path: libs/arm64-v8a/libManualDrivebySA.so
           if-no-files-found: error
+
